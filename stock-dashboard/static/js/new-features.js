@@ -131,19 +131,25 @@ function loadHistoricalAccuracy() {
 }
 
 // Auto-initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-        loadMarketStatus();
-        loadDataFreshness();
-        loadCandlestickPatterns();
-        loadHistoricalAccuracy();
-    });
-} else {
-    // DOM already loaded
+// Prioritize: fast/important loads first, heavy loads deferred
+function initNewFeatures() {
+    // Priority 1: Fast, lightweight (load immediately)
+    loadMarketStatus();
+    loadDataFreshness();
+
+    // Priority 2: Medium weight (defer 500ms to let critical content load first)
     setTimeout(function() {
-        loadMarketStatus();
-        loadDataFreshness();
         loadCandlestickPatterns();
+    }, 500);
+
+    // Priority 3: Heavy computation (defer 2s, runs 60-day backtest)
+    setTimeout(function() {
         loadHistoricalAccuracy();
-    }, 100);
+    }, 2000);
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initNewFeatures);
+} else {
+    setTimeout(initNewFeatures, 100);
 }

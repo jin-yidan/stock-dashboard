@@ -1117,6 +1117,14 @@ def generate_signal(stock_code):
 
 def backtest_signal(stock_code, lookback_days=60):
     """Backtesting - check historical signal accuracy using full algorithm."""
+    from services.cache_service import cache
+
+    # Check cache first (backtest results don't change often)
+    cache_key = f"backtest:{stock_code}:{lookback_days}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
     df = data_service.get_stock_kline(stock_code, days=lookback_days + 30)
 
     if df.empty or len(df) < lookback_days:
@@ -1181,7 +1189,7 @@ def backtest_signal(stock_code, lookback_days=60):
     buy_correct = len([r for r in buy_signals if r['correct'] == True])
     sell_correct = len([r for r in sell_signals if r['correct'] == True])
 
-    return {
+    result = {
         'stock_code': stock_code,
         'period': f'{lookback_days}天',
         'total_signals': len(buy_signals) + len(sell_signals),
@@ -1193,6 +1201,10 @@ def backtest_signal(stock_code, lookback_days=60):
         'sell_avg_return': round(sum(r['return_5d'] for r in sell_signals) / len(sell_signals), 2) if sell_signals else 0,
         'recent_signals': results[-10:] if results else []
     }
+
+    # Cache for 1 hour (backtest results don't change often)
+    cache.set(cache_key, result, ttl=3600)
+    return result
 
 
 def get_signal_color(signal):

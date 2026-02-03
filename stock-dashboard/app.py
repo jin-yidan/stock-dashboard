@@ -810,7 +810,7 @@ def api_watchlist_correlation():
 @app.route('/api/stock/<code>/historical-accuracy')
 def api_historical_accuracy(code):
     """Get historical signal accuracy for a stock."""
-    result = signal_service.backtest_signal(code, lookback_days=120)
+    result = signal_service.backtest_signal(code, lookback_days=60)
     if result.get('error'):
         return jsonify(result)
 
