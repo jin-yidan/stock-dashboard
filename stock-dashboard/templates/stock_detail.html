@@ -26,7 +26,7 @@
 
     <!-- Signal -->
     <div class="row mb-4">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div id="signal-box" class="signal-box loading">
                 <div class="signal-label">综合评估</div>
                 <div id="signal-value" class="signal-value">
@@ -42,7 +42,7 @@
 
     <!-- 52-Week Indicator -->
     <div class="row mb-4" id="week52-section" style="display:none;">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="week52-indicator">
                 <div class="week52-header">52周价格区间</div>
                 <div class="week52-bar">
@@ -73,7 +73,7 @@
 
     <!-- CZSC (Chan Theory) Analysis -->
     <div class="row mb-4" id="czsc-section" style="display:none;">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="czsc-box">
                 <div class="czsc-header">缠论分析</div>
                 <div id="czsc-content">
@@ -85,7 +85,7 @@
 
     <!-- K-Line Chart -->
     <div class="row mb-4">
-        <div class="col-lg-10">
+        <div class="col-12">
             <div class="chart-box">
                 <div class="chart-header">
                     <span class="chart-title">K线图</span>
@@ -95,7 +95,7 @@
                         <button class="chart-btn" onclick="loadKline(120)">120日</button>
                     </div>
                 </div>
-                <div id="kline-chart" style="height:400px;">
+                <div id="kline-chart" style="height:500px;">
                     <div style="padding:2rem;text-align:center;">
                         <span class="loading-spinner"></span>
                         <span class="loading-text">加载K线数据...</span>
@@ -107,7 +107,7 @@
 
     <!-- ML Prediction -->
     <div class="row mb-4" id="ml-section" style="display:none;">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="ml-box">
                 <div class="ml-header">
                     <span class="ml-title">AI预测 (5日)</span>
@@ -123,7 +123,7 @@
 
     <!-- Fundamental Data -->
     <div class="row mb-4" id="fundamental-section" style="display:none;">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="fundamental-box">
                 <div class="fundamental-header">基本面</div>
                 <div id="fundamental-content"></div>
@@ -133,7 +133,7 @@
 
     <!-- Risk Management -->
     <div class="row mb-5">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div id="risk-section" class="risk-box" style="display:none;">
                 <div class="risk-header">风险管理建议</div>
                 <div class="risk-row">
@@ -156,9 +156,55 @@
         </div>
     </div>
 
+    <!-- CYQ Chip Distribution (筹码分布) -->
+    <div class="row mb-4" id="cyq-section" style="display:none;">
+        <div class="col-12">
+            <div class="cyq-box">
+                <div class="cyq-header">
+                    <span class="cyq-title">筹码分布</span>
+                    <span class="cyq-subtitle text-secondary small">机构级成本分析</span>
+                </div>
+                <div id="cyq-content">
+                    <div class="cyq-row">
+                        <div class="cyq-item">
+                            <span class="cyq-label">获利比例</span>
+                            <span class="cyq-value" id="cyq-benefit">--%</span>
+                        </div>
+                        <div class="cyq-item">
+                            <span class="cyq-label">平均成本</span>
+                            <span class="cyq-value" id="cyq-avg-cost">--</span>
+                        </div>
+                        <div class="cyq-item">
+                            <span class="cyq-label">70%筹码区间</span>
+                            <span class="cyq-value" id="cyq-70-range">--</span>
+                        </div>
+                        <div class="cyq-item">
+                            <span class="cyq-label">集中度</span>
+                            <span class="cyq-value" id="cyq-concentration">--</span>
+                        </div>
+                    </div>
+                    <div class="cyq-signal" id="cyq-signal-text"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trading Strategies -->
+    <div class="row mb-4" id="strategy-section" style="display:none;">
+        <div class="col-12">
+            <div class="strategy-box">
+                <div class="strategy-header">
+                    <span class="strategy-title">策略信号</span>
+                    <span class="strategy-subtitle text-secondary small">专业交易策略</span>
+                </div>
+                <div id="strategy-content"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Indicators -->
     <div class="row">
-        <div class="col-lg-8">
+        <div class="col-12">
             <table class="indicator-table">
                 <thead>
                     <tr>
@@ -178,7 +224,7 @@
 
     <!-- Backtest -->
     <div class="row mt-5">
-        <div class="col-lg-8">
+        <div class="col-12">
             <div class="backtest-section">
                 <div class="d-flex align-items-center mb-3">
                     <span class="text-secondary small me-3">历史回测</span>
@@ -190,8 +236,8 @@
     </div>
 
     <!-- Price Info -->
-    <div class="row mt-5 pt-5 border-top" id="price-info" style="display:none;">
-        <div class="col-lg-8">
+    <div class="row mt-5" id="price-info" style="display:none;">
+        <div class="col-12">
             <p class="text-secondary small mb-3" id="trade-date-label"></p>
             <div class="price-row" id="price-row"></div>
         </div>
@@ -779,23 +825,36 @@ function load52WeekData() {
 
 // Export to image
 function exportToImage() {
+    const btn = document.querySelector('.export-btn[onclick="exportToImage()"]');
+    btn.textContent = '生成中...';
+    btn.disabled = true;
+
     // Use html2canvas library
     if (typeof html2canvas === 'undefined') {
         // Load html2canvas dynamically
         const script = document.createElement('script');
         script.src = 'https://cdn.staticfile.org/html2canvas/1.4.1/html2canvas.min.js';
-        script.onload = function() { captureAndDownload(); };
+        script.onload = function() { captureAndDownload(btn); };
+        script.onerror = function() {
+            // Try fallback CDN
+            const script2 = document.createElement('script');
+            script2.src = 'https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+            script2.onload = function() { captureAndDownload(btn); };
+            script2.onerror = function() {
+                btn.innerHTML = '📷 导出图片';
+                btn.disabled = false;
+                alert('加载导出组件失败，请刷新重试');
+            };
+            document.head.appendChild(script2);
+        };
         document.head.appendChild(script);
     } else {
-        captureAndDownload();
+        captureAndDownload(btn);
     }
 }
 
-function captureAndDownload() {
+function captureAndDownload(btn) {
     const exportArea = document.querySelector('.container');
-    const btn = event.target;
-    btn.textContent = '生成中...';
-    btn.disabled = true;
 
     html2canvas(exportArea, {
         backgroundColor: '#f8f9fa',
@@ -826,6 +885,112 @@ function showCompareModal() {
     }
 }
 
+// Load CYQ Chip Distribution data
+function loadCyqData() {
+    fetch('/api/stock/' + stockCode + '/cyq')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.available) {
+                // Hide section if not available
+                return;
+            }
+
+            document.getElementById('cyq-section').style.display = 'block';
+
+            const cyqData = data.data || {};
+            const signal = data.signal || {};
+
+            // Update benefit part
+            const benefitPart = cyqData.benefit_part || 0;
+            const benefitEl = document.getElementById('cyq-benefit');
+            benefitEl.textContent = (benefitPart * 100).toFixed(1) + '%';
+            if (benefitPart < 0.3) {
+                benefitEl.classList.add('up');  // Low benefit = oversold
+            } else if (benefitPart > 0.8) {
+                benefitEl.classList.add('down');  // High benefit = pressure
+            }
+
+            // Update avg cost
+            document.getElementById('cyq-avg-cost').textContent = cyqData.avg_cost || '--';
+
+            // Update 70% chip range
+            const chips70 = cyqData.percent_chips && cyqData.percent_chips['70'];
+            if (chips70 && chips70.price_range) {
+                document.getElementById('cyq-70-range').textContent =
+                    chips70.price_range[0] + ' - ' + chips70.price_range[1];
+            }
+
+            // Update concentration
+            if (chips70 && chips70.concentration) {
+                const conc = chips70.concentration;
+                const concEl = document.getElementById('cyq-concentration');
+                concEl.textContent = (conc * 100).toFixed(1) + '%';
+                if (conc < 0.1) {
+                    concEl.classList.add('up');
+                    concEl.textContent += ' (集中)';
+                } else if (conc > 0.2) {
+                    concEl.textContent += ' (分散)';
+                }
+            }
+
+            // Update signal text
+            const signalEl = document.getElementById('cyq-signal-text');
+            if (signal.score > 0.1) {
+                signalEl.innerHTML = '<span class="signal-tag bullish">筹码看多</span>';
+            } else if (signal.score < -0.1) {
+                signalEl.innerHTML = '<span class="signal-tag bearish">筹码承压</span>';
+            } else {
+                signalEl.innerHTML = '<span class="signal-tag neutral">筹码中性</span>';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading CYQ:', err);
+        });
+}
+
+// Load Trading Strategies data
+function loadStrategyData() {
+    fetch('/api/stock/' + stockCode + '/strategies')
+        .then(r => r.json())
+        .then(data => {
+            const triggered = data.triggered || [];
+
+            if (triggered.length === 0) {
+                // No strategies triggered, hide section
+                return;
+            }
+
+            document.getElementById('strategy-section').style.display = 'block';
+
+            let html = '<div class="strategy-list">';
+            triggered.forEach(s => {
+                html += '<div class="strategy-item triggered">';
+                html += '<div class="strategy-name">' + (s.name_cn || s.strategy) + '</div>';
+                if (s.details) {
+                    const detailItems = Object.entries(s.details).slice(0, 3);
+                    html += '<div class="strategy-details">';
+                    detailItems.forEach(([key, val]) => {
+                        let displayVal = typeof val === 'number' ? val.toFixed(2) : val;
+                        html += '<span class="detail-item">' + key + ': ' + displayVal + '</span>';
+                    });
+                    html += '</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+
+            // Show count
+            html += '<div class="strategy-summary">';
+            html += '<span class="signal-tag bullish">触发 ' + triggered.length + ' 个买入策略</span>';
+            html += '</div>';
+
+            document.getElementById('strategy-content').innerHTML = html;
+        })
+        .catch(err => {
+            console.error('Error loading strategies:', err);
+        });
+}
+
 // Initialize - load all data in parallel for speed
 updateWatchlistBtn();
 
@@ -837,6 +1002,8 @@ loadKline(60);
 loadMLPrediction();  // Load ML prediction in parallel
 loadCzscData();  // Load CZSC in parallel
 loadFundamentalData();  // Load fundamental data in parallel
+loadCyqData();  // Load CYQ chip distribution in parallel
+loadStrategyData();  // Load trading strategies in parallel
 
 startQuoteRefresh();
 </script>

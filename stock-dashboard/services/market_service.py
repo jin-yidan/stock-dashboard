@@ -140,69 +140,122 @@ def get_regime_weights(regime):
     """
     Get indicator weights adjusted for market regime.
 
-    - Bull market: Trend-following works better (momentum, MA)
-    - Bear market: Mean reversion works better (RSI, Bollinger)
-    - Sideways: Oscillators work better (KDJ, RSI)
+    - Bull market: Trend-following works better (momentum, MA, Supertrend)
+    - Bear market: Mean reversion works better (RSI, Bollinger, CYQ)
+    - Sideways: Oscillators work better (KDJ, RSI, Wave Trend)
+
+    Includes new indicators from InStock:
+    - supertrend: Superior trend-following indicator
+    - wave_trend: Advanced oscillator
+    - vr: Volume ratio (buying vs selling)
+    - cr: Energy indicator
+    - cyq: Chip distribution
+    - strategy: Trading strategies
     """
     if regime == 'strong_bull':
         return {
-            'ma': 0.18,
-            'macd': 0.16,
-            'momentum': 0.22,
-            'kdj': 0.08,
-            'bollinger': 0.06,
-            'rsi': 0.06,
-            'volume': 0.10,
-            'capital_flow': 0.10,
-            'weekly': 0.04
+            # Core - emphasize trend following
+            'ma': 0.12,
+            'macd': 0.10,
+            'momentum': 0.14,
+            'kdj': 0.05,
+            'bollinger': 0.04,
+            'rsi': 0.04,
+            'volume': 0.06,
+            'capital_flow': 0.08,
+            'weekly': 0.03,
+            'trend_strength': 0.04,
+            # New - emphasize trend indicators
+            'supertrend': 0.12,  # High weight in bull
+            'wave_trend': 0.04,
+            'vr': 0.04,
+            'cr': 0.02,
+            'cyq': 0.04,
+            'strategy': 0.04,
         }
     elif regime == 'bull':
         return {
-            'ma': 0.16,
-            'macd': 0.15,
-            'momentum': 0.20,
-            'kdj': 0.10,
-            'bollinger': 0.08,
-            'rsi': 0.07,
-            'volume': 0.10,
-            'capital_flow': 0.10,
-            'weekly': 0.04
+            # Core
+            'ma': 0.10,
+            'macd': 0.10,
+            'momentum': 0.12,
+            'kdj': 0.06,
+            'bollinger': 0.05,
+            'rsi': 0.05,
+            'volume': 0.06,
+            'capital_flow': 0.08,
+            'weekly': 0.03,
+            'trend_strength': 0.03,
+            # New
+            'supertrend': 0.10,
+            'wave_trend': 0.05,
+            'vr': 0.04,
+            'cr': 0.03,
+            'cyq': 0.05,
+            'strategy': 0.05,
         }
     elif regime == 'strong_bear':
         return {
-            'ma': 0.10,
-            'macd': 0.12,
-            'momentum': 0.10,
-            'kdj': 0.15,
-            'bollinger': 0.18,
-            'rsi': 0.15,
-            'volume': 0.08,
-            'capital_flow': 0.08,
-            'weekly': 0.04
+            # Core - emphasize mean reversion
+            'ma': 0.06,
+            'macd': 0.08,
+            'momentum': 0.06,
+            'kdj': 0.10,
+            'bollinger': 0.12,
+            'rsi': 0.10,
+            'volume': 0.05,
+            'capital_flow': 0.06,
+            'weekly': 0.03,
+            'trend_strength': 0.02,
+            # New - emphasize oversold indicators
+            'supertrend': 0.06,
+            'wave_trend': 0.06,
+            'vr': 0.04,
+            'cr': 0.04,
+            'cyq': 0.08,  # High weight - chip analysis valuable in bear
+            'strategy': 0.04,
         }
     elif regime == 'bear':
         return {
-            'ma': 0.12,
-            'macd': 0.13,
-            'momentum': 0.12,
-            'kdj': 0.14,
-            'bollinger': 0.15,
-            'rsi': 0.14,
-            'volume': 0.08,
-            'capital_flow': 0.08,
-            'weekly': 0.04
+            # Core
+            'ma': 0.08,
+            'macd': 0.08,
+            'momentum': 0.08,
+            'kdj': 0.09,
+            'bollinger': 0.10,
+            'rsi': 0.09,
+            'volume': 0.05,
+            'capital_flow': 0.06,
+            'weekly': 0.03,
+            'trend_strength': 0.02,
+            # New
+            'supertrend': 0.06,
+            'wave_trend': 0.05,
+            'vr': 0.04,
+            'cr': 0.04,
+            'cyq': 0.07,
+            'strategy': 0.06,
         }
     else:  # sideways
         return {
-            'ma': 0.12,
-            'macd': 0.14,
-            'momentum': 0.12,
-            'kdj': 0.16,
-            'bollinger': 0.14,
-            'rsi': 0.12,
-            'volume': 0.08,
-            'capital_flow': 0.08,
-            'weekly': 0.04
+            # Core - emphasize oscillators
+            'ma': 0.08,
+            'macd': 0.08,
+            'momentum': 0.08,
+            'kdj': 0.10,
+            'bollinger': 0.08,
+            'rsi': 0.08,
+            'volume': 0.05,
+            'capital_flow': 0.06,
+            'weekly': 0.03,
+            'trend_strength': 0.02,
+            # New - balanced approach
+            'supertrend': 0.06,
+            'wave_trend': 0.07,  # Oscillator works well in sideways
+            'vr': 0.05,
+            'cr': 0.04,
+            'cyq': 0.06,
+            'strategy': 0.06,
         }
 
 

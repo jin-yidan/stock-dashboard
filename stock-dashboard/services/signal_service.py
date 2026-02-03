@@ -1,22 +1,31 @@
 import pandas as pd
 from services import data_service, indicator_service, ml_service, fundamental_service, czsc_service
 from services import market_service
+from services import cyq_service, strategy_service
 
 # Dynamic weights - adjusted based on market regime
 # See market_service.get_regime_weights() for regime-specific weights
 
-# Default weights (fallback)
+# Default weights (fallback) - now includes new indicators from InStock
 DEFAULT_WEIGHTS = {
-    'ma': 0.14,
-    'macd': 0.14,
-    'momentum': 0.16,
-    'kdj': 0.12,
-    'bollinger': 0.10,
-    'rsi': 0.10,
-    'volume': 0.08,
-    'capital_flow': 0.08,
-    'weekly': 0.04,
-    'trend_strength': 0.04  # New: ADX-based
+    # Core indicators
+    'ma': 0.10,
+    'macd': 0.10,
+    'momentum': 0.10,
+    'kdj': 0.08,
+    'bollinger': 0.06,
+    'rsi': 0.06,
+    'volume': 0.06,
+    'capital_flow': 0.06,
+    'weekly': 0.03,
+    'trend_strength': 0.03,
+    # New indicators from InStock
+    'supertrend': 0.08,      # Trend following
+    'wave_trend': 0.05,      # Advanced oscillator
+    'vr': 0.04,              # Volume ratio
+    'cr': 0.03,              # Energy indicator
+    'cyq': 0.06,             # Chip distribution
+    'strategy': 0.06,        # Trading strategies
 }
 
 
@@ -598,6 +607,242 @@ def analyze_northbound(stock_code):
         }
 
 
+# =============================================================================
+# NEW INDICATOR ANALYSIS FUNCTIONS (from InStock)
+# =============================================================================
+
+def analyze_supertrend(df):
+    """Analyze Supertrend indicator - superior trend following."""
+    result = indicator_service.get_supertrend_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or 'supertrend_direction' not in df.columns:
+        return {
+            'name': '超级趋势',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': DEFAULT_WEIGHTS.get('supertrend', 0.08),
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    direction = details.get('direction', 'neutral')
+    flipped = details.get('flipped', False)
+
+    if flipped:
+        if direction == 'bullish':
+            exp = '超级趋势翻多，趋势反转向上'
+        else:
+            exp = '超级趋势翻空，趋势反转向下'
+    else:
+        if direction == 'bullish':
+            exp = '超级趋势看多，保持上涨趋势'
+        else:
+            exp = '超级趋势看空，保持下跌趋势'
+
+    return {
+        'name': '超级趋势',
+        'signal': result['signal'],
+        'score': score,
+        'weight': DEFAULT_WEIGHTS.get('supertrend', 0.08),
+        'weighted_score': score * DEFAULT_WEIGHTS.get('supertrend', 0.08),
+        'plain_explanation': exp
+    }
+
+
+def analyze_wave_trend(df):
+    """Analyze Wave Trend indicator - advanced oscillator."""
+    result = indicator_service.get_wave_trend_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or 'wt1' not in df.columns:
+        return {
+            'name': '波浪趋势',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': DEFAULT_WEIGHTS.get('wave_trend', 0.05),
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    wt1 = details.get('wt1', 0)
+    level = details.get('level', 'normal')
+
+    if level == 'oversold':
+        exp = f'WT={wt1:.0f}，处于超卖区，可能反弹'
+    elif level == 'overbought':
+        exp = f'WT={wt1:.0f}，处于超买区，注意回调'
+    else:
+        if score > 0.2:
+            exp = f'WT={wt1:.0f}，金叉向上，短期看多'
+        elif score < -0.2:
+            exp = f'WT={wt1:.0f}，死叉向下，短期看空'
+        else:
+            exp = f'WT={wt1:.0f}，方向不明'
+
+    return {
+        'name': '波浪趋势',
+        'signal': result['signal'],
+        'score': score,
+        'weight': DEFAULT_WEIGHTS.get('wave_trend', 0.05),
+        'weighted_score': score * DEFAULT_WEIGHTS.get('wave_trend', 0.05),
+        'plain_explanation': exp
+    }
+
+
+def analyze_vr(df):
+    """Analyze VR (Volume Ratio) - buying vs selling volume."""
+    result = indicator_service.get_vr_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or 'vr' not in df.columns:
+        return {
+            'name': '量比',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': DEFAULT_WEIGHTS.get('vr', 0.04),
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    vr = details.get('vr', 100)
+    level = details.get('level', 'normal')
+
+    if level == 'accumulation':
+        exp = f'VR={vr:.0f}，多方成交量占优，资金吸筹'
+    elif level == 'distribution':
+        exp = f'VR={vr:.0f}，空方成交量占优，资金派发'
+    else:
+        exp = f'VR={vr:.0f}，多空成交量平衡'
+
+    return {
+        'name': '量比',
+        'signal': result['signal'],
+        'score': score,
+        'weight': DEFAULT_WEIGHTS.get('vr', 0.04),
+        'weighted_score': score * DEFAULT_WEIGHTS.get('vr', 0.04),
+        'plain_explanation': exp
+    }
+
+
+def analyze_cr(df):
+    """Analyze CR (Energy Indicator) - buying vs selling pressure."""
+    result = indicator_service.get_cr_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or 'cr' not in df.columns:
+        return {
+            'name': '能量',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': DEFAULT_WEIGHTS.get('cr', 0.03),
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    cr = details.get('cr', 100)
+    level = details.get('level', 'normal')
+
+    if level == 'oversold':
+        exp = f'CR={cr:.0f}，能量超卖，买入机会'
+    elif level == 'overbought':
+        exp = f'CR={cr:.0f}，能量超买，注意减仓'
+    else:
+        exp = f'CR={cr:.0f}，能量正常'
+
+    return {
+        'name': '能量',
+        'signal': result['signal'],
+        'score': score,
+        'weight': DEFAULT_WEIGHTS.get('cr', 0.03),
+        'weighted_score': score * DEFAULT_WEIGHTS.get('cr', 0.03),
+        'plain_explanation': exp
+    }
+
+
+def analyze_cyq(df):
+    """Analyze CYQ (Chip Distribution) - institutional analysis."""
+    result = cyq_service.get_cyq_analysis(df)
+
+    if not result.get('available', False):
+        return {
+            'name': '筹码',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': DEFAULT_WEIGHTS.get('cyq', 0.06),
+            'weighted_score': 0,
+            'plain_explanation': '筹码数据不足'
+        }
+
+    signal_data = result.get('signal', {})
+    score = signal_data.get('score', 0)
+    details = signal_data.get('details', {})
+
+    benefit_part = details.get('benefit_part', 50)
+    avg_cost = details.get('avg_cost', 0)
+
+    if benefit_part < 20:
+        exp = f'仅{benefit_part:.0f}%筹码盈利，超卖可能反弹'
+    elif benefit_part < 40:
+        exp = f'{benefit_part:.0f}%筹码盈利，平均成本{avg_cost:.2f}'
+    elif benefit_part > 90:
+        exp = f'{benefit_part:.0f}%筹码盈利，获利盘压力大'
+    elif benefit_part > 80:
+        exp = f'{benefit_part:.0f}%筹码盈利，注意减仓'
+    else:
+        exp = f'{benefit_part:.0f}%筹码盈利，平均成本{avg_cost:.2f}'
+
+    signal = signal_data.get('signal', 'neutral')
+
+    return {
+        'name': '筹码',
+        'signal': signal,
+        'score': score,
+        'weight': DEFAULT_WEIGHTS.get('cyq', 0.06),
+        'weighted_score': score * DEFAULT_WEIGHTS.get('cyq', 0.06),
+        'plain_explanation': exp,
+        'cyq_details': details
+    }
+
+
+def analyze_strategies(df):
+    """Analyze trading strategies - pattern-based signals."""
+    result = strategy_service.get_strategy_signal(df)
+    score = result.get('score', 0)
+    triggered = result.get('triggered', [])
+    triggered_count = result.get('triggered_count', 0)
+
+    if triggered_count == 0:
+        return {
+            'name': '策略',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': DEFAULT_WEIGHTS.get('strategy', 0.06),
+            'weighted_score': 0,
+            'plain_explanation': '无策略触发'
+        }
+
+    # Build explanation from triggered strategies
+    strategy_names = [s.get('name_cn', s.get('strategy', '')) for s in triggered[:3]]
+    exp = f"触发{triggered_count}个策略：{'、'.join(strategy_names)}"
+
+    signal = result.get('signal', 'neutral')
+
+    return {
+        'name': '策略',
+        'signal': signal,
+        'score': score,
+        'weight': DEFAULT_WEIGHTS.get('strategy', 0.06),
+        'weighted_score': score * DEFAULT_WEIGHTS.get('strategy', 0.06),
+        'plain_explanation': exp,
+        'triggered_strategies': triggered
+    }
+
+
 def generate_signal(stock_code):
     """Generate comprehensive signal using ensemble approach with market regime detection.
 
@@ -635,8 +880,9 @@ def generate_signal(stock_code):
     weights, regime_info = get_current_weights()
     regime = regime_info.get('regime', 'unknown')
 
-    # Analyze all technical indicators
+    # Analyze all technical indicators (core + new from InStock)
     indicators = [
+        # Core indicators
         analyze_ma(df),
         analyze_macd(df),
         analyze_momentum(df),
@@ -645,7 +891,14 @@ def generate_signal(stock_code):
         analyze_rsi(df),
         analyze_volume(df),
         analyze_weekly_trend(df),
-        analyze_trend_strength(df),  # NEW: ADX-based
+        analyze_trend_strength(df),
+        # New indicators from InStock
+        analyze_supertrend(df),      # Superior trend following
+        analyze_wave_trend(df),      # Advanced oscillator
+        analyze_vr(df),              # Volume ratio by direction
+        analyze_cr(df),              # Energy indicator
+        analyze_cyq(df),             # Chip distribution
+        analyze_strategies(df),      # Trading strategies
     ]
 
     # Update weights based on regime
@@ -653,9 +906,17 @@ def generate_signal(stock_code):
         name_key = ind['name']
         # Map Chinese names to weight keys
         key_map = {
+            # Core indicators
             '均线': 'ma', 'MACD': 'macd', '动量': 'momentum',
             'KDJ': 'kdj', '布林带': 'bollinger', 'RSI': 'rsi',
-            '成交量': 'volume', '周线': 'weekly', '趋势强度': 'trend_strength'
+            '成交量': 'volume', '周线': 'weekly', '趋势强度': 'trend_strength',
+            # New indicators from InStock
+            '超级趋势': 'supertrend',
+            '波浪趋势': 'wave_trend',
+            '量比': 'vr',
+            '能量': 'cr',
+            '筹码': 'cyq',
+            '策略': 'strategy',
         }
         weight_key = key_map.get(name_key)
         if weight_key and weight_key in weights:

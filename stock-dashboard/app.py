@@ -435,6 +435,186 @@ def api_margin(code):
     return jsonify(signal)
 
 
+# =============================================================================
+# NEW ENDPOINTS: CYQ Chip Distribution & Trading Strategies
+# =============================================================================
+
+@app.route('/api/stock/<code>/cyq')
+def api_cyq(code):
+    """
+    Get CYQ (Chip Distribution / 筹码分布) analysis for a stock.
+
+    Returns:
+    - benefit_part: % of chips profitable at current price
+    - avg_cost: Average cost of all shareholders
+    - percent_chips: Price ranges containing 70%/90% of chips
+    - signal: Trading signal based on chip distribution
+    """
+    from services import cyq_service
+    df = data_service.get_stock_kline(code, days=250)
+    if df.empty:
+        return jsonify({'error': 'No data', 'available': False})
+
+    result = cyq_service.get_cyq_analysis(df)
+    return jsonify(result)
+
+
+@app.route('/api/stock/<code>/strategies')
+def api_strategies(code):
+    """
+    Run all trading strategies on a stock.
+
+    Strategies include:
+    - backtrace_ma250: Pullback after breaking 250-day MA
+    - platform_breakthrough: Breakout from consolidation
+    - climax_limitdown: Panic selling reversal
+    - low_backtrace_increase: Quality uptrend with controlled drawdowns
+    - keep_increasing: Sustained MA progression
+    - turtle_trade: Breakout above 60-day high
+    - low_atr: Low volatility steady growth
+    """
+    from services import strategy_service
+    df = data_service.get_stock_kline(code, days=300)
+    if df.empty:
+        return jsonify({'error': 'No data'})
+
+    result = strategy_service.run_all_strategies(df)
+    result['stock_code'] = code
+    return jsonify(result)
+
+
+@app.route('/api/stock/<code>/indicators/new')
+def api_new_indicators(code):
+    """
+    Get all new indicator values from InStock integration.
+
+    Includes:
+    - supertrend: Trend direction and levels
+    - wave_trend: WT1 and WT2 values
+    - vr: Volume ratio
+    - cr: Energy indicator
+    - psy: Psychology line
+    - brar: AR and BR sentiment
+    - bias: MA deviation
+    - trix: Triple EMA momentum
+    - mfi: Money flow index
+    - vhf: Trend vs ranging filter
+    """
+    df = data_service.get_stock_kline(code)
+    if df.empty:
+        return jsonify({'error': 'No data'})
+
+    df = indicator_service.calculate_all(df)
+    latest = df.iloc[-1]
+
+    # Extract new indicators
+    indicators = {}
+
+    # Supertrend
+    if 'supertrend' in df.columns:
+        indicators['supertrend'] = {
+            'value': round(latest.get('supertrend', 0), 2),
+            'upper_band': round(latest.get('supertrend_ub', 0), 2),
+            'lower_band': round(latest.get('supertrend_lb', 0), 2),
+            'direction': 'bullish' if latest.get('supertrend_direction', 0) == 1 else 'bearish',
+            'signal': indicator_service.get_supertrend_signal(df)
+        }
+
+    # Wave Trend
+    if 'wt1' in df.columns:
+        indicators['wave_trend'] = {
+            'wt1': round(latest.get('wt1', 0), 2),
+            'wt2': round(latest.get('wt2', 0), 2),
+            'signal': indicator_service.get_wave_trend_signal(df)
+        }
+
+    # Volume Ratio
+    if 'vr' in df.columns:
+        indicators['vr'] = {
+            'value': round(latest.get('vr', 100), 2),
+            'ma': round(latest.get('vr_ma', 100), 2),
+            'signal': indicator_service.get_vr_signal(df)
+        }
+
+    # CR Energy
+    if 'cr' in df.columns:
+        indicators['cr'] = {
+            'value': round(latest.get('cr', 100), 2),
+            'ma1': round(latest.get('cr_ma1', 100), 2),
+            'ma2': round(latest.get('cr_ma2', 100), 2),
+            'signal': indicator_service.get_cr_signal(df)
+        }
+
+    # PSY Psychology
+    if 'psy' in df.columns:
+        indicators['psy'] = {
+            'value': round(latest.get('psy', 50), 2),
+            'ma': round(latest.get('psy_ma', 50), 2),
+            'signal': indicator_service.get_psy_signal(df)
+        }
+
+    # BRAR Sentiment
+    if 'ar' in df.columns:
+        indicators['brar'] = {
+            'ar': round(latest.get('ar', 100), 2),
+            'br': round(latest.get('br', 100), 2),
+            'signal': indicator_service.get_brar_signal(df)
+        }
+
+    # BIAS Deviation
+    if 'bias_6' in df.columns:
+        indicators['bias'] = {
+            'bias_6': round(latest.get('bias_6', 0), 2),
+            'bias_12': round(latest.get('bias_12', 0), 2),
+            'bias_24': round(latest.get('bias_24', 0), 2),
+            'signal': indicator_service.get_bias_signal(df)
+        }
+
+    # TRIX
+    if 'trix' in df.columns:
+        indicators['trix'] = {
+            'value': round(latest.get('trix', 0), 4),
+            'signal_line': round(latest.get('trix_signal', 0), 4),
+            'signal': indicator_service.get_trix_signal(df)
+        }
+
+    # MFI Money Flow
+    if 'mfi' in df.columns:
+        indicators['mfi'] = {
+            'value': round(latest.get('mfi', 50), 2),
+            'signal': indicator_service.get_mfi_signal(df)
+        }
+
+    # VHF Trend Filter
+    if 'vhf' in df.columns:
+        indicators['vhf'] = {
+            'value': round(latest.get('vhf', 0.35), 4),
+            'signal': indicator_service.get_vhf_signal(df)
+        }
+
+    # Force Index
+    if 'force_13' in df.columns:
+        indicators['force'] = {
+            'force_2': round(latest.get('force_2', 0), 0),
+            'force_13': round(latest.get('force_13', 0), 0),
+            'signal': indicator_service.get_force_index_signal(df)
+        }
+
+    # RVI
+    if 'rvi' in df.columns:
+        indicators['rvi'] = {
+            'value': round(latest.get('rvi', 0), 4),
+            'signal_line': round(latest.get('rvi_signal', 0), 4),
+            'signal': indicator_service.get_rvi_signal(df)
+        }
+
+    return jsonify({
+        'stock_code': code,
+        'indicators': indicators,
+        'count': len(indicators)
+    })
+
+
 # Feature 2: Sector Heat Map
 @app.route('/heatmap')
 def sector_heatmap():
