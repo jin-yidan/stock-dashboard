@@ -191,7 +191,7 @@ function renderWatchlist() {
         const cached = getCachedQuote(s.code);
         const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
         return `
-            <div class="watchlist-card" id="stock-${s.code}">
+            <div class="watchlist-card" id="stock-${s.code}" onmouseenter="preloadStock('${s.code}')">
                 <a href="/stock/${s.code}" class="card-link">
                     <div class="card-header">
                         <span class="card-name">${s.name}</span>
@@ -248,6 +248,7 @@ function addStockElement(code, name, prepend = false) {
     const div = document.createElement('div');
     div.className = 'watchlist-card';
     div.id = 'stock-' + code;
+    div.onmouseenter = () => preloadStock(code);
     div.innerHTML = `
         <a href="/stock/${code}" class="card-link">
             <div class="card-header">
@@ -283,6 +284,17 @@ function loadSingleQuote(code) {
             const el = document.getElementById('quote-' + code);
             if (el) el.innerHTML = '<span class="quote-na">--</span>';
         });
+}
+
+// Preload stock data on hover for faster navigation
+const preloadedStocks = new Set();
+function preloadStock(code) {
+    if (preloadedStocks.has(code)) return;
+    preloadedStocks.add(code);
+    // Preload signal data (the slowest API)
+    fetch('/api/stock/' + code + '/signal');
+    // Preload kline data
+    fetch('/api/stock/' + code + '/kline?days=60');
 }
 
 function removeFromWatchlist(code) {
