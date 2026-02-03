@@ -64,22 +64,28 @@ def get_dividend_info(stock_code):
         if df is not None and not df.empty:
             df = df.sort_values('report_date', ascending=False)
 
-            # Get recent dividends (last 3 years)
-            recent = df.head(5)
-            dividend_count = len(recent)
+            # Count total dividends
+            total_count = len(df)
+
+            # Get recent dividends (last 3 years based on date)
+            from datetime import datetime, timedelta
+            three_years_ago = datetime.now() - timedelta(days=3*365)
+            recent_df = df[pd.to_datetime(df['report_date']) > three_years_ago]
+            recent_count = len(recent_df)
 
             result = {
-                'has_dividend': dividend_count > 0,
-                'recent_dividends': dividend_count,
-                'latest_dividend': str(recent.iloc[0]['dividend_plan']) if dividend_count > 0 else None,
-                'latest_date': str(recent.iloc[0]['report_date']) if dividend_count > 0 else None,
+                'has_dividend': total_count > 0,
+                'recent_dividends': recent_count,
+                'total_dividends': total_count,
+                'latest_dividend': str(df.iloc[0]['dividend_plan']) if total_count > 0 else None,
+                'latest_date': str(df.iloc[0]['report_date']) if total_count > 0 else None,
             }
             _set_cached(cache_key, result)
             return result
     except Exception as e:
         print(f"Error getting dividend for {stock_code}: {e}")
 
-    return {'has_dividend': False, 'recent_dividends': 0}
+    return {'has_dividend': False, 'recent_dividends': 0, 'total_dividends': 0}
 
 
 def get_market_cap(stock_code, current_price):
