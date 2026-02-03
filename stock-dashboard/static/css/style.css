@@ -1,42 +1,40 @@
-/* Minimalist Stock Analysis */
+/* Stock Analysis */
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     color: #1a1a1a;
-    background: #fafafa;
-    line-height: 1.5;
+    background: #fff;
+    line-height: 1.6;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    font-size: 14px;
-    -webkit-font-smoothing: antialiased;
 }
 
 main { flex: 1; }
 
 h1, h2, h3 {
-    font-weight: 500;
+    font-weight: 600;
     letter-spacing: -0.02em;
 }
 
-.up { color: #e53935; }
-.down { color: #43a047; }
+.up { color: #d1242f; }
+.down { color: #1a7f37; }
 
 /* Hero Section */
 .hero-section {
-    background: #1a1a1a;
-    padding: 5rem 1rem 4rem;
+    background: #fff;
+    padding: 4rem 1rem 3rem;
     text-align: center;
+    border-bottom: 1px solid #e5e5e5;
 }
 
 .hero-title {
-    color: #fff;
-    font-size: 2rem;
-    font-weight: 400;
+    color: #1a1a1a;
+    font-size: 1.75rem;
+    font-weight: 600;
     margin-bottom: 2rem;
-    letter-spacing: 0.1em;
 }
 
 .search-form {
@@ -48,10 +46,11 @@ h1, h2, h3 {
 .search-box {
     display: flex;
     background: #fff;
+    border: 2px solid #1a1a1a;
     border-radius: 8px;
     padding: 0.25rem;
     width: 100%;
-    max-width: 320px;
+    max-width: 360px;
 }
 
 .search-input {
@@ -64,12 +63,12 @@ h1, h2, h3 {
 }
 
 .search-input::placeholder {
-    color: #bbb;
+    color: #999;
 }
 
 .search-btn {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     border: none;
     background: #1a1a1a;
     color: #fff;
@@ -92,11 +91,12 @@ h1, h2, h3 {
     left: 50%;
     transform: translateX(-50%);
     width: 100%;
-    max-width: 320px;
+    max-width: 360px;
     background: #fff;
+    border: 1px solid #e5e5e5;
     border-radius: 8px;
     margin-top: 0.5rem;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     overflow: hidden;
     z-index: 100;
 }
@@ -117,7 +117,7 @@ h1, h2, h3 {
 }
 
 .hero-result-item:hover {
-    background: #f5f5f5;
+    background: #f9f9f9;
 }
 
 .result-name {
@@ -126,8 +126,8 @@ h1, h2, h3 {
 
 .result-code {
     font-size: 0.8rem;
-    color: #999;
-    font-family: "SF Mono", Monaco, monospace;
+    color: #666;
+    font-family: monospace;
 }
 
 /* Section Header */
@@ -135,54 +135,51 @@ h1, h2, h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1rem;
 }
 
 .section-title {
-    font-size: 0.85rem;
+    font-size: 0.875rem;
     font-weight: 500;
     color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
 }
 
 .btn-add-stock {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    padding: 0.4rem 0.8rem;
-    background: transparent;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #fff;
     border: 1px solid #ddd;
     border-radius: 6px;
-    font-size: 0.8rem;
-    color: #666;
+    font-size: 0.875rem;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.2s;
 }
 
 .btn-add-stock:hover {
     background: #f5f5f5;
     border-color: #ccc;
-    color: #333;
 }
 
 /* Watchlist Grid */
 .watchlist-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 0.75rem;
+    gap: 1px;
+    background: #e5e5e5;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .watchlist-card {
     position: relative;
     background: #fff;
-    border-radius: 8px;
-    border: 1px solid #eee;
-    transition: all 0.15s;
 }
 
 .watchlist-card:hover {
-    border-color: #ddd;
+    background: #f9f9f9;
 }
 
 .watchlist-card:hover .card-remove {
@@ -199,19 +196,19 @@ h1, h2, h3 {
 .card-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
     margin-bottom: 0.5rem;
 }
 
 .card-name {
     font-weight: 500;
-    font-size: 0.95rem;
+    font-size: 1rem;
     color: #1a1a1a;
 }
 
 .card-code {
-    font-family: "SF Mono", Monaco, monospace;
-    font-size: 0.7rem;
+    font-family: monospace;
+    font-size: 0.75rem;
     color: #999;
 }
 
@@ -223,26 +220,26 @@ h1, h2, h3 {
 
 .card-remove {
     position: absolute;
-    top: 6px;
-    right: 6px;
+    top: 4px;
+    right: 4px;
     width: 22px;
     height: 22px;
     border: none;
-    background: transparent;
-    color: #ccc;
+    background: #f0f0f0;
+    color: #999;
     font-size: 14px;
     border-radius: 4px;
     cursor: pointer;
     opacity: 0;
-    transition: all 0.1s;
+    transition: all 0.15s;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .card-remove:hover {
-    background: #f5f5f5;
-    color: #999;
+    background: #e0e0e0;
+    color: #666;
 }
 
 /* Empty State */
@@ -252,32 +249,27 @@ h1, h2, h3 {
     align-items: center;
     justify-content: center;
     padding: 3rem 2rem;
-    background: #fff;
-    border-radius: 8px;
-    border: 1px dashed #ddd;
     text-align: center;
 }
 
 .empty-icon {
-    font-size: 2rem;
-    margin-bottom: 0.75rem;
-    opacity: 0.5;
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
 }
 
 .empty-message span {
-    color: #999;
-    font-size: 0.9rem;
+    color: #666;
     margin-bottom: 1rem;
 }
 
 .btn-add-empty {
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 1.25rem;
     background: #1a1a1a;
     color: #fff;
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 0.875rem;
 }
 
 .btn-add-empty:hover {
@@ -288,18 +280,18 @@ h1, h2, h3 {
 .quote-price {
     font-size: 1.1rem;
     font-weight: 600;
-    font-family: "SF Mono", Monaco, monospace;
+    font-family: monospace;
 }
 
 .quote-pct {
     font-size: 0.8rem;
     font-weight: 500;
-    font-family: "SF Mono", Monaco, monospace;
+    font-family: monospace;
 }
 
 .quote-loading, .quote-na {
     font-size: 0.8rem;
-    color: #ccc;
+    color: #999;
 }
 
 /* Legacy Input (for modal and stock detail) */
@@ -361,59 +353,49 @@ h1, h2, h3 {
 
 .modal-box {
     background: #fff;
-    padding: 1.5rem;
+    padding: 2rem;
     width: 90%;
-    max-width: 400px;
+    max-width: 500px;
     max-height: 80vh;
     overflow-y: auto;
-    border-radius: 12px;
+    border-radius: 8px;
 }
 
 .modal-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1.25rem;
-    font-weight: 500;
-    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    font-weight: 600;
 }
 
 .modal-close {
     border: none;
-    background: transparent;
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    font-size: 1.25rem;
+    background: none;
+    font-size: 1.5rem;
     cursor: pointer;
     color: #999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .modal-close:hover {
-    background: #f5f5f5;
-    color: #666;
+    color: #333;
 }
 
 .modal-results {
-    margin: 0.75rem 0;
+    margin: 1rem 0;
 }
 
 .search-result-item {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 1rem;
     width: 100%;
     padding: 0.75rem;
     border: none;
-    background: #f8f8f8;
+    background: #f9f9f9;
     text-align: left;
     cursor: pointer;
     margin-bottom: 2px;
-    border-radius: 6px;
-    transition: background 0.1s;
 }
 
 .search-result-item:hover {
@@ -421,49 +403,43 @@ h1, h2, h3 {
 }
 
 .search-result-item .code {
-    font-family: "SF Mono", Monaco, monospace;
-    font-size: 0.75rem;
-    color: #999;
+    font-family: monospace;
+    font-size: 0.875rem;
+    color: #666;
 }
 
 .search-result-item .name {
     font-weight: 500;
-    font-size: 0.9rem;
 }
 
 .quick-add-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
-    gap: 0.4rem;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.5rem;
 }
 
 .quick-add-btn {
-    padding: 0.6rem;
-    border: 1px solid #eee;
+    padding: 0.5rem;
+    border: 1px solid #e5e5e5;
     background: #fff;
     text-align: left;
     cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.1s;
 }
 
 .quick-add-btn:hover {
-    background: #f8f8f8;
-    border-color: #ddd;
+    background: #f9f9f9;
 }
 
 .quick-add-btn .code {
     display: block;
-    font-size: 0.65rem;
-    color: #bbb;
-    font-family: "SF Mono", Monaco, monospace;
-    margin-bottom: 0.15rem;
+    font-size: 0.7rem;
+    color: #999;
+    font-family: monospace;
 }
 
 .quick-add-btn .name {
     display: block;
-    font-size: 0.85rem;
-    font-weight: 500;
+    font-size: 0.875rem;
 }
 
 /* Price Display */
