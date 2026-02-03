@@ -4,11 +4,10 @@
 <!-- Hero Section -->
 <div class="hero-section">
     <div class="container">
-        <h1 class="hero-title">股票分析</h1>
-        <p class="hero-subtitle">基于技术指标的综合分析系统</p>
+        <h1 class="hero-title">盯盘</h1>
         <form onsubmit="return go()" class="search-form">
             <div class="search-box">
-                <input type="text" id="code" class="search-input" placeholder="输入6位股票代码" maxlength="6" autofocus>
+                <input type="text" id="code" class="search-input" placeholder="代码或名称" autofocus>
                 <button type="submit" class="search-btn">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
@@ -16,7 +15,7 @@
                 </button>
             </div>
         </form>
-        <p class="hero-hint">支持 MA · MACD · RSI · KDJ · 资金流向 分析</p>
+        <div id="hero-search-results" class="hero-results"></div>
     </div>
 </div>
 
@@ -67,9 +66,66 @@
 <script>
 document.getElementById('code').focus();
 
+let heroSearchTimeout;
+const codeInput = document.getElementById('code');
+
+// Live search as user types
+codeInput.addEventListener('input', function() {
+    const q = this.value.trim();
+    clearTimeout(heroSearchTimeout);
+
+    // If it's a 6-digit code, no need to search
+    if (/^\d{6}$/.test(q)) {
+        document.getElementById('hero-search-results').innerHTML = '';
+        return;
+    }
+
+    if (q.length < 1) {
+        document.getElementById('hero-search-results').innerHTML = '';
+        return;
+    }
+
+    heroSearchTimeout = setTimeout(() => {
+        fetch('/api/search?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(data => {
+                if (data.length === 0) {
+                    document.getElementById('hero-search-results').innerHTML = '';
+                    return;
+                }
+                const html = data.slice(0, 5).map(s => `
+                    <a href="/stock/${s.stock_code}" class="hero-result-item">
+                        <span class="result-name">${s.short_name}</span>
+                        <span class="result-code">${s.stock_code}</span>
+                    </a>
+                `).join('');
+                document.getElementById('hero-search-results').innerHTML = html;
+            });
+    }, 150);
+});
+
+// Close search results when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.search-box') && !e.target.closest('.hero-results')) {
+        document.getElementById('hero-search-results').innerHTML = '';
+    }
+});
+
 function go() {
     const c = document.getElementById('code').value.trim();
-    if (/^\d{6}$/.test(c)) { location.href = '/stock/' + c; }
+    // If 6-digit code, go directly
+    if (/^\d{6}$/.test(c)) {
+        location.href = '/stock/' + c;
+        return false;
+    }
+    // Otherwise, search and go to first result
+    fetch('/api/search?q=' + encodeURIComponent(c))
+        .then(r => r.json())
+        .then(data => {
+            if (data.length > 0) {
+                location.href = '/stock/' + data[0].stock_code;
+            }
+        });
     return false;
 }
 
