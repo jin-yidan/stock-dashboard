@@ -225,6 +225,22 @@ h1, h2, h3 {
     color: #000;
 }
 
+.site-nav {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.site-nav .nav-link {
+    font-size: 0.85rem;
+    color: #666;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.site-nav .nav-link:hover {
+    color: #0066cc;
+}
+
 /* Footer */
 footer {
     background: #fff;
@@ -1275,4 +1291,444 @@ input:focus, button:focus {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============== NEW FEATURES STYLES ============== */
+
+/* Stock Comparison Page */
+.compare-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    margin-bottom: 1rem;
+}
+
+.compare-header {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.compare-name {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #333;
+    text-decoration: none;
+}
+
+.compare-name:hover {
+    color: #0066cc;
+}
+
+.compare-code {
+    font-size: 0.85rem;
+    color: #999;
+    font-family: monospace;
+}
+
+.compare-price {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+}
+
+.compare-price .price {
+    font-size: 2rem;
+    font-weight: 600;
+}
+
+.compare-price .change {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.compare-table-wrapper {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.compare-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.compare-table th,
+.compare-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.compare-table th {
+    font-weight: 500;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+.compare-table td {
+    font-size: 0.95rem;
+}
+
+.winner {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.winner1 { background: #e3f2fd; color: #1976d2; }
+.winner2 { background: #fff3e0; color: #f57c00; }
+
+/* 52-Week Position Bar */
+.week52-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.week52-title {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.75rem;
+}
+
+.week52-bar {
+    position: relative;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    margin-bottom: 0.5rem;
+}
+
+.week52-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: linear-gradient(90deg, #26a69a, #ffc107, #ef5350);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.week52-marker {
+    position: absolute;
+    top: -4px;
+    width: 16px;
+    height: 16px;
+    background: #333;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    transition: left 0.5s ease;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.week52-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: #999;
+}
+
+.change-stocks-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* Sector Heat Map */
+.heatmap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1rem;
+}
+
+.heatmap-sector {
+    border-radius: 12px;
+    padding: 1.25rem;
+    min-height: 120px;
+    transition: transform 0.2s;
+}
+
+.heatmap-sector:hover {
+    transform: translateY(-2px);
+}
+
+.sector-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.sector-change {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+.sector-stocks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.sector-stock {
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 4px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.sector-stock:hover {
+    background: rgba(255,255,255,0.5);
+}
+
+.heatmap-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    padding: 1rem;
+    background: #fff;
+    border-radius: 8px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+}
+
+/* Price Alerts */
+.alert-permission-box {
+    background: #fff3cd;
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.alert-form-box,
+.alerts-list-box,
+.alerts-history-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.alerts-grid {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.alert-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.alert-stock {
+    flex: 1;
+}
+
+.alert-name {
+    font-weight: 500;
+    display: block;
+}
+
+.alert-code {
+    font-size: 0.8rem;
+    color: #999;
+    font-family: monospace;
+}
+
+.alert-condition {
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.alert-remove {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: #999;
+    font-size: 1.25rem;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.alert-remove:hover {
+    background: #e0e0e0;
+    color: #666;
+}
+
+.history-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: #f0fff4;
+    border-radius: 8px;
+    font-size: 0.9rem;
+}
+
+.history-stock {
+    font-weight: 500;
+    min-width: 120px;
+}
+
+.history-msg {
+    flex: 1;
+    color: #666;
+}
+
+.history-time {
+    font-size: 0.8rem;
+    color: #999;
+}
+
+/* 52-Week Indicator in Stock Detail */
+.week52-indicator {
+    background: #fff;
+    border-radius: 12px;
+    padding: 1.25rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    margin-bottom: 1rem;
+}
+
+.week52-header {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 1rem;
+}
+
+.week52-stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.75rem;
+}
+
+.week52-stat {
+    text-align: center;
+}
+
+.week52-stat-label {
+    font-size: 0.75rem;
+    color: #999;
+    display: block;
+}
+
+.week52-stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* Form Controls */
+.form-control,
+.form-select {
+    padding: 0.6rem 1rem;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.95rem;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #0066cc;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(0,102,204,0.1);
+}
+
+.form-label {
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 0.25rem;
+    display: block;
+}
+
+.btn {
+    padding: 0.6rem 1.25rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #0066cc;
+    color: #fff;
+}
+
+.btn-primary:hover {
+    background: #0052a3;
+}
+
+/* Export Button */
+.export-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: #666;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.export-btn:hover {
+    background: #e9ecef;
+    color: #333;
+}
+
+/* Responsive for new features */
+@media (max-width: 768px) {
+    .heatmap-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .compare-price .price {
+        font-size: 1.5rem;
+    }
+
+    .alert-item {
+        flex-wrap: wrap;
+    }
+
+    .heatmap-legend {
+        gap: 0.5rem;
+    }
+
+    .legend-item {
+        font-size: 0.7rem;
+    }
 }

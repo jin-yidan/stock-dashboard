@@ -8,12 +8,14 @@
     <div class="row mb-5">
         <div class="col">
             <a href="/" class="back-link">← 返回</a>
-            <div class="d-flex align-items-center mt-3">
+            <div class="d-flex align-items-center mt-3 flex-wrap gap-2">
                 <h1 class="me-3 mb-0">{{ stock_name }}</h1>
                 <span class="text-secondary me-3">{{ stock_code }}</span>
                 <button id="watchlist-btn" class="btn-watchlist" onclick="toggleWatchlist()">
                     <span id="watchlist-icon">☆</span> 自选
                 </button>
+                <button class="export-btn" onclick="showCompareModal()">对比</button>
+                <button class="export-btn" onclick="exportToImage()">📷 导出图片</button>
             </div>
         </div>
         <div class="col-auto text-end" id="price-section">
@@ -35,6 +37,37 @@
             <p id="signal-summary" class="mt-4 text-secondary">
                 <span class="skeleton skeleton-text wide"></span>
             </p>
+        </div>
+    </div>
+
+    <!-- 52-Week Indicator -->
+    <div class="row mb-4" id="week52-section" style="display:none;">
+        <div class="col-lg-8">
+            <div class="week52-indicator">
+                <div class="week52-header">52周价格区间</div>
+                <div class="week52-bar">
+                    <div class="week52-fill" id="week52-fill"></div>
+                    <div class="week52-marker" id="week52-marker"></div>
+                </div>
+                <div class="week52-labels">
+                    <span id="week52-low">--</span>
+                    <span id="week52-high">--</span>
+                </div>
+                <div class="week52-stats">
+                    <div class="week52-stat">
+                        <span class="week52-stat-label">距最高</span>
+                        <span class="week52-stat-value down" id="week52-from-high">--</span>
+                    </div>
+                    <div class="week52-stat">
+                        <span class="week52-stat-label">当前位置</span>
+                        <span class="week52-stat-value" id="week52-position">--</span>
+                    </div>
+                    <div class="week52-stat">
+                        <span class="week52-stat-label">距最低</span>
+                        <span class="week52-stat-value up" id="week52-from-low">--</span>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -719,11 +752,86 @@ function startQuoteRefresh() {
     }
 }
 
+// Load 52-week data
+function load52WeekData() {
+    fetch('/api/stock/' + stockCode + '/52week')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) return;
+
+            document.getElementById('week52-section').style.display = 'block';
+
+            // Update bar position
+            document.getElementById('week52-fill').style.width = data.position + '%';
+            document.getElementById('week52-marker').style.left = data.position + '%';
+
+            // Update labels
+            document.getElementById('week52-low').textContent = data.low_52w;
+            document.getElementById('week52-high').textContent = data.high_52w;
+
+            // Update stats
+            document.getElementById('week52-from-high').textContent = data.pct_from_high + '%';
+            document.getElementById('week52-from-low').textContent = '+' + data.pct_from_low + '%';
+            document.getElementById('week52-position').textContent = data.position + '%';
+        })
+        .catch(err => console.error('Error loading 52-week data:', err));
+}
+
+// Export to image
+function exportToImage() {
+    // Use html2canvas library
+    if (typeof html2canvas === 'undefined') {
+        // Load html2canvas dynamically
+        const script = document.createElement('script');
+        script.src = 'https://cdn.staticfile.org/html2canvas/1.4.1/html2canvas.min.js';
+        script.onload = function() { captureAndDownload(); };
+        document.head.appendChild(script);
+    } else {
+        captureAndDownload();
+    }
+}
+
+function captureAndDownload() {
+    const exportArea = document.querySelector('.container');
+    const btn = event.target;
+    btn.textContent = '生成中...';
+    btn.disabled = true;
+
+    html2canvas(exportArea, {
+        backgroundColor: '#f8f9fa',
+        scale: 2,
+        logging: false,
+        useCORS: true
+    }).then(canvas => {
+        const link = document.createElement('a');
+        link.download = stockName + '_' + stockCode + '_分析.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+
+        btn.innerHTML = '📷 导出图片';
+        btn.disabled = false;
+    }).catch(err => {
+        console.error('Export error:', err);
+        btn.innerHTML = '📷 导出图片';
+        btn.disabled = false;
+        alert('导出失败，请重试');
+    });
+}
+
+// Compare modal
+function showCompareModal() {
+    const code2 = prompt('输入要对比的股票代码（6位数字）:', '');
+    if (code2 && /^\d{6}$/.test(code2)) {
+        location.href = '/compare/' + stockCode + '/' + code2;
+    }
+}
+
 // Initialize - load all data in parallel for speed
 updateWatchlistBtn();
 
 // Start all API calls in parallel (don't wait for one to finish before starting others)
 loadSignalData();
+load52WeekData();
 loadQuoteData();
 loadKline(60);
 loadMLPrediction();  // Load ML prediction in parallel

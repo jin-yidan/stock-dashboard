@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+
+{% block title %}对比 {{ stock1.name }} vs {{ stock2.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <a href="/" class="back-link">← 返回</a>
+            <h1 class="mt-3">股票对比</h1>
+            <p class="text-secondary">{{ stock1.name }} ({{ stock1.code }}) vs {{ stock2.name }} ({{ stock2.code }})</p>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-5">
+        <span class="loading-spinner"></span>
+        <span class="loading-text">加载数据中...</span>
+    </div>
+
+    <!-- Comparison Content -->
+    <div id="compare-content" style="display:none;">
+        <!-- Price Cards -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="compare-card" id="card1">
+                    <div class="compare-header">
+                        <a href="/stock/{{ stock1.code }}" class="compare-name">{{ stock1.name }}</a>
+                        <span class="compare-code">{{ stock1.code }}</span>
+                    </div>
+                    <div class="compare-price">
+                        <span class="price" id="price1">--</span>
+                        <span class="change" id="change1">--</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="compare-card" id="card2">
+                    <div class="compare-header">
+                        <a href="/stock/{{ stock2.code }}" class="compare-name">{{ stock2.name }}</a>
+                        <span class="compare-code">{{ stock2.code }}</span>
+                    </div>
+                    <div class="compare-price">
+                        <span class="price" id="price2">--</span>
+                        <span class="change" id="change2">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics Comparison Table -->
+        <div class="compare-table-wrapper">
+            <table class="compare-table">
+                <thead>
+                    <tr>
+                        <th>指标</th>
+                        <th class="text-end">{{ stock1.name }}</th>
+                        <th class="text-end">{{ stock2.name }}</th>
+                        <th class="text-center">对比</th>
+                    </tr>
+                </thead>
+                <tbody id="metrics-body">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 52-Week Position -->
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <div class="week52-box">
+                    <div class="week52-title">{{ stock1.name }} 52周位置</div>
+                    <div class="week52-bar">
+                        <div class="week52-fill" id="pos1"></div>
+                        <div class="week52-marker" id="marker1"></div>
+                    </div>
+                    <div class="week52-labels">
+                        <span id="low1">--</span>
+                        <span id="high1">--</span>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="week52-box">
+                    <div class="week52-title">{{ stock2.name }} 52周位置</div>
+                    <div class="week52-bar">
+                        <div class="week52-fill" id="pos2"></div>
+                        <div class="week52-marker" id="marker2"></div>
+                    </div>
+                    <div class="week52-labels">
+                        <span id="low2">--</span>
+                        <span id="high2">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Stocks -->
+    <div class="row mt-5">
+        <div class="col">
+            <div class="change-stocks-box">
+                <p class="text-secondary small mb-2">更换股票</p>
+                <form onsubmit="return changeStocks()">
+                    <div class="d-flex gap-2">
+                        <input type="text" id="new-code1" class="form-control" placeholder="股票1代码" value="{{ stock1.code }}">
+                        <span class="align-self-center">vs</span>
+                        <input type="text" id="new-code2" class="form-control" placeholder="股票2代码" value="{{ stock2.code }}">
+                        <button type="submit" class="btn btn-primary">对比</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const code1 = '{{ stock1.code }}';
+const code2 = '{{ stock2.code }}';
+
+function loadComparison() {
+    fetch('/api/compare/' + code1 + '/' + code2)
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('loading').innerHTML = '<p class="text-secondary">加载失败</p>';
+                return;
+            }
+
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('compare-content').style.display = 'block';
+
+            const s1 = data.stock1;
+            const s2 = data.stock2;
+
+            // Update prices
+            updatePrice('price1', 'change1', 'card1', s1.price, s1.change_pct);
+            updatePrice('price2', 'change2', 'card2', s2.price, s2.change_pct);
+
+            // Update 52-week positions
+            update52Week(1, s1);
+            update52Week(2, s2);
+
+            // Build comparison table
+            const metrics = [
+                { label: '5日涨跌', key: 'ret_5d', format: 'pct', better: 'higher' },
+                { label: '20日涨跌', key: 'ret_20d', format: 'pct', better: 'higher' },
+                { label: '60日涨跌', key: 'ret_60d', format: 'pct', better: 'higher' },
+                { label: '52周最高', key: 'high_52w', format: 'price' },
+                { label: '52周最低', key: 'low_52w', format: 'price' },
+                { label: '距52周高点', key: 'pct_from_high', format: 'pct', better: 'higher' },
+                { label: '距52周低点', key: 'pct_from_low', format: 'pct', better: 'higher' },
+                { label: 'RSI', key: 'rsi', format: 'num' },
+            ];
+
+            let html = '';
+            metrics.forEach(m => {
+                const v1 = s1[m.key];
+                const v2 = s2[m.key];
+                let f1, f2, compare;
+
+                if (m.format === 'pct') {
+                    f1 = formatPct(v1);
+                    f2 = formatPct(v2);
+                } else if (m.format === 'price') {
+                    f1 = v1.toFixed(2);
+                    f2 = v2.toFixed(2);
+                } else {
+                    f1 = v1;
+                    f2 = v2;
+                }
+
+                if (m.better === 'higher') {
+                    if (v1 > v2) compare = '<span class="winner winner1">◀</span>';
+                    else if (v2 > v1) compare = '<span class="winner winner2">▶</span>';
+                    else compare = '=';
+                } else {
+                    compare = '--';
+                }
+
+                html += `<tr>
+                    <td>${m.label}</td>
+                    <td class="text-end ${m.format === 'pct' ? (v1 >= 0 ? 'up' : 'down') : ''}">${f1}</td>
+                    <td class="text-end ${m.format === 'pct' ? (v2 >= 0 ? 'up' : 'down') : ''}">${f2}</td>
+                    <td class="text-center">${compare}</td>
+                </tr>`;
+            });
+
+            document.getElementById('metrics-body').innerHTML = html;
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('loading').innerHTML = '<p class="text-secondary">加载失败</p>';
+        });
+}
+
+function updatePrice(priceId, changeId, cardId, price, change) {
+    const priceClass = change >= 0 ? 'up' : 'down';
+    document.getElementById(priceId).textContent = price.toFixed(2);
+    document.getElementById(priceId).className = 'price ' + priceClass;
+    document.getElementById(changeId).textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+    document.getElementById(changeId).className = 'change ' + priceClass;
+}
+
+function update52Week(n, data) {
+    const pos = (data.price - data.low_52w) / (data.high_52w - data.low_52w) * 100;
+    document.getElementById('pos' + n).style.width = pos + '%';
+    document.getElementById('marker' + n).style.left = pos + '%';
+    document.getElementById('low' + n).textContent = data.low_52w;
+    document.getElementById('high' + n).textContent = data.high_52w;
+}
+
+function formatPct(v) {
+    return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+}
+
+function changeStocks() {
+    const c1 = document.getElementById('new-code1').value.trim();
+    const c2 = document.getElementById('new-code2').value.trim();
+    if (c1 && c2 && /^\d{6}$/.test(c1) && /^\d{6}$/.test(c2)) {
+        location.href = '/compare/' + c1 + '/' + c2;
+    }
+    return false;
+}
+
+loadComparison();
+</script>
+{% endblock %}

@@ -325,6 +325,169 @@ def api_czsc_signals(code):
     return jsonify(result)
 
 
+# ============== NEW FEATURES ==============
+
+# Feature 1: Stock Comparison Page
+@app.route('/compare/<code1>/<code2>')
+def compare_stocks(code1, code2):
+    """Compare two stocks side by side."""
+    name1 = data_service.get_stock_name(code1)
+    name2 = data_service.get_stock_name(code2)
+    return render_template(
+        'compare.html',
+        stock1={'code': code1, 'name': name1},
+        stock2={'code': code2, 'name': name2}
+    )
+
+
+@app.route('/api/compare/<code1>/<code2>')
+def api_compare(code1, code2):
+    """API for comparison data."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def get_stock_data(code):
+        df = data_service.get_stock_kline(code, days=250)
+        if df.empty:
+            return None
+        df = indicator_service.calculate_all(df)
+        quote = data_service.get_realtime_quote(code)
+
+        # Calculate 52-week high/low
+        high_52w = df['high'].max()
+        low_52w = df['low'].min()
+        current = quote.get('price', df.iloc[-1]['close']) if quote else df.iloc[-1]['close']
+
+        # Performance metrics
+        if len(df) >= 5:
+            ret_5d = (df.iloc[-1]['close'] / df.iloc[-5]['close'] - 1) * 100
+        else:
+            ret_5d = 0
+        if len(df) >= 20:
+            ret_20d = (df.iloc[-1]['close'] / df.iloc[-20]['close'] - 1) * 100
+        else:
+            ret_20d = 0
+        if len(df) >= 60:
+            ret_60d = (df.iloc[-1]['close'] / df.iloc[-60]['close'] - 1) * 100
+        else:
+            ret_60d = 0
+
+        return {
+            'code': code,
+            'name': data_service.get_stock_name(code),
+            'price': current,
+            'change_pct': quote.get('change_pct', 0) if quote else 0,
+            'high_52w': round(high_52w, 2),
+            'low_52w': round(low_52w, 2),
+            'pct_from_high': round((current / high_52w - 1) * 100, 1),
+            'pct_from_low': round((current / low_52w - 1) * 100, 1),
+            'ret_5d': round(ret_5d, 2),
+            'ret_20d': round(ret_20d, 2),
+            'ret_60d': round(ret_60d, 2),
+            'volume': quote.get('volume', 0) if quote else 0,
+            'rsi': round(df.iloc[-1].get('rsi', 50), 1) if 'rsi' in df.columns else 50,
+        }
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future1 = executor.submit(get_stock_data, code1)
+        future2 = executor.submit(get_stock_data, code2)
+        data1 = future1.result(timeout=15)
+        data2 = future2.result(timeout=15)
+
+    if not data1 or not data2:
+        return jsonify({'error': 'Failed to fetch data'})
+
+    return jsonify({'stock1': data1, 'stock2': data2})
+
+
+# Feature 2: Sector Heat Map
+@app.route('/heatmap')
+def sector_heatmap():
+    """Sector heat map page."""
+    return render_template('heatmap.html')
+
+
+@app.route('/api/heatmap')
+def api_heatmap():
+    """API for sector heat map data."""
+    # Representative stocks for each sector
+    sectors = {
+        '白酒': ['600519', '000858', '000568'],
+        '银行': ['601398', '600036', '000001'],
+        '新能源': ['300750', '002594', '600438'],
+        '医药': ['600276', '000538', '300760'],
+        '科技': ['002415', '000725', '603986'],
+        '地产': ['000002', '001979', '600048'],
+        '消费': ['000333', '000651', '600887'],
+        '证券': ['600030', '601688', '000776'],
+    }
+
+    result = []
+    for sector_name, codes in sectors.items():
+        sector_data = {'name': sector_name, 'stocks': [], 'avg_change': 0}
+        total_change = 0
+        count = 0
+
+        for code in codes:
+            try:
+                quote = data_service.get_realtime_quote(code)
+                if quote and 'price' in quote:
+                    stock_name = data_service.get_stock_name(code)
+                    change = quote.get('change_pct', 0)
+                    sector_data['stocks'].append({
+                        'code': code,
+                        'name': stock_name,
+                        'price': quote['price'],
+                        'change_pct': change
+                    })
+                    total_change += change
+                    count += 1
+            except Exception:
+                pass
+
+        if count > 0:
+            sector_data['avg_change'] = round(total_change / count, 2)
+        result.append(sector_data)
+
+    # Sort by average change
+    result.sort(key=lambda x: x['avg_change'], reverse=True)
+    return jsonify(result)
+
+
+# Feature 3: 52-week High/Low API
+@app.route('/api/stock/<code>/52week')
+def api_52week(code):
+    """Get 52-week high/low data."""
+    df = data_service.get_stock_kline(code, days=250)
+    if df.empty:
+        return jsonify({'error': 'No data'})
+
+    quote = data_service.get_realtime_quote(code)
+    current = quote.get('price', df.iloc[-1]['close']) if quote else df.iloc[-1]['close']
+
+    high_52w = df['high'].max()
+    low_52w = df['low'].min()
+    high_date = df.loc[df['high'].idxmax(), 'trade_date']
+    low_date = df.loc[df['low'].idxmin(), 'trade_date']
+
+    return jsonify({
+        'current': round(current, 2),
+        'high_52w': round(high_52w, 2),
+        'low_52w': round(low_52w, 2),
+        'high_date': str(high_date)[:10],
+        'low_date': str(low_date)[:10],
+        'pct_from_high': round((current / high_52w - 1) * 100, 1),
+        'pct_from_low': round((current / low_52w - 1) * 100, 1),
+        'position': round((current - low_52w) / (high_52w - low_52w) * 100, 1) if high_52w != low_52w else 50
+    })
+
+
+# Feature 4: Price Alerts
+@app.route('/alerts')
+def alerts_page():
+    """Price alerts management page."""
+    return render_template('alerts.html')
+
+
 if __name__ == '__main__':
     print("Stock Analysis App")
     print("Open http://localhost:8080")

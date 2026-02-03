@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}板块热力图{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col">
+            <a href="/" class="back-link">← 返回</a>
+            <h1 class="mt-3">板块热力图</h1>
+            <p class="text-secondary">市场板块涨跌一览</p>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading" class="text-center py-5">
+        <span class="loading-spinner"></span>
+        <span class="loading-text">加载板块数据...</span>
+    </div>
+
+    <!-- Heatmap Grid -->
+    <div id="heatmap-grid" class="heatmap-grid" style="display:none;">
+    </div>
+
+    <!-- Legend -->
+    <div class="heatmap-legend mt-4" id="legend" style="display:none;">
+        <span class="legend-item"><span class="legend-color" style="background:#c0392b;"></span> 大涨 (&gt;3%)</span>
+        <span class="legend-item"><span class="legend-color" style="background:#e74c3c;"></span> 上涨 (1-3%)</span>
+        <span class="legend-item"><span class="legend-color" style="background:#f5b7b1;"></span> 小涨 (0-1%)</span>
+        <span class="legend-item"><span class="legend-color" style="background:#d5dbdb;"></span> 平盘</span>
+        <span class="legend-item"><span class="legend-color" style="background:#abebc6;"></span> 小跌 (0-1%)</span>
+        <span class="legend-item"><span class="legend-color" style="background:#27ae60;"></span> 下跌 (1-3%)</span>
+        <span class="legend-item"><span class="legend-color" style="background:#1e8449;"></span> 大跌 (&gt;3%)</span>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function getHeatColor(change) {
+    if (change > 3) return '#c0392b';
+    if (change > 1) return '#e74c3c';
+    if (change > 0) return '#f5b7b1';
+    if (change > -0.1) return '#d5dbdb';
+    if (change > -1) return '#abebc6';
+    if (change > -3) return '#27ae60';
+    return '#1e8449';
+}
+
+function getTextColor(change) {
+    if (change > 1 || change < -1) return '#fff';
+    return '#333';
+}
+
+function loadHeatmap() {
+    fetch('/api/heatmap')
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('heatmap-grid').style.display = 'grid';
+            document.getElementById('legend').style.display = 'flex';
+
+            let html = '';
+            data.forEach(sector => {
+                const bgColor = getHeatColor(sector.avg_change);
+                const textColor = getTextColor(sector.avg_change);
+                const changePrefix = sector.avg_change >= 0 ? '+' : '';
+
+                html += `
+                <div class="heatmap-sector" style="background:${bgColor};color:${textColor};">
+                    <div class="sector-name">${sector.name}</div>
+                    <div class="sector-change">${changePrefix}${sector.avg_change.toFixed(2)}%</div>
+                    <div class="sector-stocks">
+                        ${sector.stocks.map(s => {
+                            const stockColor = s.change_pct >= 0 ? 'up' : 'down';
+                            return `<a href="/stock/${s.code}" class="sector-stock ${stockColor}" title="${s.name}">${s.name.substring(0,4)}</a>`;
+                        }).join('')}
+                    </div>
+                </div>
+                `;
+            });
+
+            document.getElementById('heatmap-grid').innerHTML = html;
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('loading').innerHTML = '<p class="text-secondary">加载失败</p>';
+        });
+}
+
+loadHeatmap();
+</script>
+{% endblock %}
