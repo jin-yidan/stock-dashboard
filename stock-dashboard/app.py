@@ -78,12 +78,12 @@ def api_backtest(code):
 @app.route('/api/stock/<code>/ml/train')
 def api_ml_train(code):
     """Train ML model for a specific stock."""
-    df = data_service.get_stock_kline(code, days=200)
+    df = data_service.get_stock_kline(code, days=500)  # More data for training
     if df.empty:
         return jsonify({'error': 'No data'})
 
     df = indicator_service.calculate_all(df)
-    model, scaler, stats = ml_service.train_model(code, df)
+    model, scaler, stats = ml_service.train_model(code, df, threshold=1.0)  # Lower threshold
 
     if model is None:
         return jsonify({'error': stats})
@@ -102,16 +102,16 @@ def api_ml_train(code):
 @app.route('/api/stock/<code>/ml/predict')
 def api_ml_predict(code):
     """Get ML prediction for a stock."""
-    df = data_service.get_stock_kline(code, days=100)
+    df = data_service.get_stock_kline(code, days=200)  # Need more data for features
     if df.empty:
         return jsonify({'error': 'No data'})
 
     df = indicator_service.calculate_all(df)
 
     # Try stock-specific model first, then general model
-    result, error = ml_service.predict(code, df)
+    result, error = ml_service.predict(code, df, threshold=1.0)
     if error:
-        result, error = ml_service.predict_with_general_model(df)
+        result, error = ml_service.predict_with_general_model(df, threshold=1.0)
 
     if error:
         return jsonify({'error': error})

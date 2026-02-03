@@ -422,10 +422,10 @@ def _get_feature_importance(model, columns):
     try:
         if hasattr(model, 'feature_importances_'):
             importance = dict(zip(columns, model.feature_importances_))
-        elif hasattr(model, 'estimators_'):
-            # Ensemble model - average importance
+        elif hasattr(model, 'named_estimators_'):
+            # VotingClassifier - average importance from named estimators
             importances = []
-            for name, est in model.estimators_:
+            for name, est in model.named_estimators_.items():
                 if hasattr(est, 'feature_importances_'):
                     importances.append(est.feature_importances_)
             if importances:
@@ -438,8 +438,13 @@ def _get_feature_importance(model, columns):
 
 def _get_model_names(model):
     """Get names of models in ensemble."""
-    if hasattr(model, 'estimators_'):
-        return [name for name, _ in model.estimators_]
+    # VotingClassifier stores names in 'estimators' (unfitted) or 'named_estimators_' (fitted)
+    if hasattr(model, 'named_estimators_'):
+        return list(model.named_estimators_.keys())
+    if hasattr(model, 'estimators') and isinstance(model.estimators, list):
+        # estimators is list of (name, estimator) tuples
+        if model.estimators and isinstance(model.estimators[0], tuple):
+            return [name for name, _ in model.estimators]
     return [type(model).__name__]
 
 
