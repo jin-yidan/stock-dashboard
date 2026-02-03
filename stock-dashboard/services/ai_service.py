@@ -1,23 +1,16 @@
 """
-AI Analysis Service - GPT-powered stock analysis with web search.
-
-Uses user's OpenAI API key to generate comprehensive analysis
-combining our technical data with recent news and policy context.
+AI Analysis Service - Claude-powered stock analysis.
 """
 
-from openai import OpenAI
+try:
+    import anthropic
+    HAS_ANTHROPIC = True
+except ImportError:
+    HAS_ANTHROPIC = False
 
 
 def build_analysis_prompt(stock_code, stock_name, signal_data, cyq_data, strategies_data, week52_data):
-    """
-    Build the prompt with all our technical data.
-
-    The prompt asks GPT to:
-    1. Analyze the technical data we provide
-    2. Search for recent news about the stock
-    3. Consider policy/sector trends
-    4. Give comprehensive advice
-    """
+    """Build the prompt with all our technical data."""
 
     # Format indicators table
     indicators = signal_data.get('indicators', [])
@@ -64,7 +57,7 @@ def build_analysis_prompt(stock_code, stock_name, signal_data, cyq_data, strateg
 
     prompt = f"""你是一位专业的A股分析师。请对股票 **{stock_name} ({stock_code})** 进行全面分析。
 
-## 第一部分：技术分析数据（已通过量化模型计算）
+## 技术分析数据（已通过量化模型计算）
 
 ### 综合信号
 - 信号: {signal_data.get('signal_cn', 'N/A')}
@@ -89,16 +82,7 @@ def build_analysis_prompt(stock_code, stock_name, signal_data, cyq_data, strateg
 
 ---
 
-## 第二部分：请你搜索补充以下信息
-
-1. **个股新闻**: {stock_name}最近7天的重要新闻（业绩、公告、重大事项）
-2. **行业动态**: 该股票所属行业的近期政策或趋势变化
-3. **资金动向**: 近期是否有北向资金、主力资金的明显流入流出
-4. **机构观点**: 近期券商研报评级变化（如有）
-
----
-
-## 第三部分：请给出综合分析报告
+## 请给出综合分析报告
 
 ### 1. 一句话结论
 （明确看多/看空/观望，20字以内）
@@ -106,24 +90,20 @@ def build_analysis_prompt(stock_code, stock_name, signal_data, cyq_data, strateg
 ### 2. 技术面分析
 （基于上述量化数据，指出2-3个关键点）
 
-### 3. 消息面分析
-（基于你搜索到的新闻，指出重要影响因素）
-
-### 4. 操作建议
+### 3. 操作建议
 - 仓位建议：轻仓/半仓/重仓
 - 买入时机：具体价位或条件
 - 止损位：{stop_loss if stop_loss else '建议设置'}
 - 止盈位：{take_profit if take_profit else '建议设置'}
 
-### 5. 风险提示
+### 4. 风险提示
 （列出2-3个需要警惕的风险点）
 
 ---
 
 要求：
 - 保持客观专业，不要过度乐观或悲观
-- 总字数控制在400-500字
-- 不要编造数据，如果搜索不到相关新闻请说明
+- 总字数控制在300-400字
 - 给出的建议要具体可执行
 """
 
@@ -132,10 +112,10 @@ def build_analysis_prompt(stock_code, stock_name, signal_data, cyq_data, strateg
 
 def generate_ai_analysis(api_key, stock_code, stock_name, signal_data, cyq_data, strategies_data, week52_data):
     """
-    Generate AI analysis using OpenAI API.
+    Generate AI analysis using Claude API.
 
     Args:
-        api_key: User's OpenAI API key
+        api_key: User's Anthropic API key (sk-ant-...)
         stock_code: Stock code
         stock_name: Stock name
         signal_data: Output from signal_service.generate_signal()
@@ -146,54 +126,48 @@ def generate_ai_analysis(api_key, stock_code, stock_name, signal_data, cyq_data,
     Returns:
         dict with 'success', 'analysis' or 'error'
     """
+    if not HAS_ANTHROPIC:
+        return {'success': False, 'error': '服务器未安装 anthropic 库'}
+
+    if not api_key or not api_key.startswith('sk-ant-'):
+        return {'success': False, 'error': 'API Key 格式错误，应以 sk-ant- 开头'}
+
+    prompt = build_analysis_prompt(
+        stock_code, stock_name, signal_data,
+        cyq_data, strategies_data, week52_data
+    )
+
+    system_prompt = "你是一位经验丰富的A股分析师，擅长结合技术分析和基本面分析给出投资建议。"
+
     try:
-        client = OpenAI(api_key=api_key)
-
-        prompt = build_analysis_prompt(
-            stock_code, stock_name, signal_data,
-            cyq_data, strategies_data, week52_data
-        )
-
-        # Use GPT-4o for best quality with web browsing capability
-        # Fall back to gpt-4o-mini if needed (cheaper but still good)
-        response = client.chat.completions.create(
-            model="gpt-4o",  # Has web browsing capability
-            messages=[
-                {
-                    "role": "system",
-                    "content": "你是一位经验丰富的A股分析师，擅长结合技术分析和基本面分析给出投资建议。请使用搜索功能获取最新的股票新闻和市场信息。"
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0.7,
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
             max_tokens=1500,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
 
-        analysis = response.choices[0].message.content
-
-        # Get token usage for cost estimation
-        usage = response.usage
-        tokens_used = usage.total_tokens if usage else 0
+        analysis = response.content[0].text
+        tokens_used = response.usage.input_tokens + response.usage.output_tokens
 
         return {
             'success': True,
             'analysis': analysis,
             'tokens_used': tokens_used,
-            'model': 'gpt-4o'
+            'model': 'claude-sonnet-4'
         }
 
     except Exception as e:
         error_msg = str(e)
 
-        # Provide helpful error messages
-        if 'invalid_api_key' in error_msg.lower() or 'incorrect api key' in error_msg.lower():
+        if 'invalid_api_key' in error_msg.lower() or 'authentication' in error_msg.lower():
             return {'success': False, 'error': 'API Key 无效，请检查后重试'}
         elif 'rate_limit' in error_msg.lower():
             return {'success': False, 'error': 'API 请求频率超限，请稍后重试'}
-        elif 'insufficient_quota' in error_msg.lower():
+        elif 'credit' in error_msg.lower() or 'billing' in error_msg.lower():
             return {'success': False, 'error': 'API 余额不足，请充值后重试'}
         else:
             return {'success': False, 'error': f'分析失败: {error_msg}'}

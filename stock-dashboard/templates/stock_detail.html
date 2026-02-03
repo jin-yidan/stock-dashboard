@@ -81,12 +81,12 @@
     <div id="api-key-modal" class="modal" style="display:none;">
         <div class="modal-content modal-sm">
             <div class="modal-header">
-                <span class="modal-title">API Key</span>
+                <span class="modal-title">Claude API Key</span>
                 <button class="modal-close" onclick="hideApiKeyModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-note">火山引擎格式: apikey:ep-xxx</p>
-                <input type="text" id="api-key-input" placeholder="apikey:endpoint" class="api-key-input">
+                <p class="modal-note">输入你的 Anthropic API Key</p>
+                <input type="text" id="api-key-input" placeholder="sk-ant-..." class="api-key-input">
                 <div class="modal-actions">
                     <button class="btn-save" onclick="saveApiKey()">保存</button>
                     <button class="btn-clear" onclick="clearApiKey()">清除</button>
