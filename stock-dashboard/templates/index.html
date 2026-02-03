@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row">
+        <div class="col-lg-6">
+            <h1 class="mb-4">输入股票代码</h1>
+            <form onsubmit="return go()" class="mb-3">
+                <input type="text" id="code" class="stock-input" placeholder="000001" maxlength="6" autofocus>
+                <button type="submit" class="btn-go">分析</button>
+            </form>
+            <div id="search-results" class="search-dropdown"></div>
+            <p class="text-secondary mt-4">基于均线、MACD、RSI、成交量、资金流向的综合分析</p>
+        </div>
+    </div>
+
+    <div class="mt-5 pt-5 border-top">
+        <div class="d-flex align-items-center mb-3">
+            <p class="text-secondary small mb-0 me-3">自选</p>
+            <button id="add-stock-btn" class="btn-add" onclick="showAddModal()">+ 添加</button>
+        </div>
+        <div id="watchlist" class="stock-grid">
+            <!-- Populated by JS -->
+        </div>
+        <p id="empty-msg" class="text-secondary small" style="display:none;">点击上方"添加"按钮添加股票</p>
+    </div>
+</div>
+
+<!-- Add Stock Modal -->
+<div id="add-modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span>添加自选股</span>
+            <button onclick="hideAddModal()" class="modal-close">&times;</button>
+        </div>
+        <input type="text" id="search-input" class="stock-input" placeholder="输入代码或名称" oninput="searchStocks()">
+        <div id="modal-search-results" class="modal-results"></div>
+        <p class="text-secondary small mt-3">常用股票</p>
+        <div class="quick-add-grid">
+            {% for stock in hot_stocks %}
+            <button class="quick-add-btn" onclick="addToWatchlist('{{ stock.stock_code }}', '{{ stock.short_name }}')">
+                <span class="code">{{ stock.stock_code }}</span>
+                <span class="name">{{ stock.short_name }}</span>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('code').focus();
+
+function go() {
+    const c = document.getElementById('code').value.trim();
+    if (/^\d{6}$/.test(c)) { location.href = '/stock/' + c; }
+    return false;
+}
+
+// Watchlist functions
+function getWatchlist() {
+    const data = localStorage.getItem('watchlist');
+    return data ? JSON.parse(data) : [];
+}
+
+function saveWatchlist(list) {
+    localStorage.setItem('watchlist', JSON.stringify(list));
+}
+
+function renderWatchlist() {
+    const list = getWatchlist();
+    const container = document.getElementById('watchlist');
+    const emptyMsg = document.getElementById('empty-msg');
+
+    if (list.length === 0) {
+        container.innerHTML = '';
+        emptyMsg.style.display = 'block';
+        return;
+    }
+
+    emptyMsg.style.display = 'none';
+    container.innerHTML = list.map(s => `
+        <div class="stock-link-wrap" id="stock-${s.code}">
+            <a href="/stock/${s.code}" class="stock-link">
+                <span class="code">${s.code}</span>
+                <span class="name">${s.name}</span>
+                <div class="stock-quote" id="quote-${s.code}">
+                    <span class="quote-loading">--</span>
+                </div>
+            </a>
+            <button class="btn-remove" onclick="removeFromWatchlist('${s.code}')" title="移除">&times;</button>
+        </div>
+    `).join('');
+
+    // Load quotes for all stocks
+    loadWatchlistQuotes(list);
+}
+
+function loadWatchlistQuotes(list) {
+    list.forEach(s => {
+        fetch('/api/stock/' + s.code + '/quote')
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById('quote-' + s.code);
+                if (!el) return;
+
+                if (data.error || !data.price) {
+                    el.innerHTML = '<span class="quote-na">--</span>';
+                    return;
+                }
+
+                const pctClass = data.change_pct >= 0 ? 'up' : 'down';
+                const prefix = data.change_pct >= 0 ? '+' : '';
+                el.innerHTML = `
+                    <span class="quote-price ${pctClass}">${data.price.toFixed(2)}</span>
+                    <span class="quote-pct ${pctClass}">${prefix}${data.change_pct.toFixed(2)}%</span>
+                `;
+            })
+            .catch(() => {
+                const el = document.getElementById('quote-' + s.code);
+                if (el) el.innerHTML = '<span class="quote-na">--</span>';
+            });
+    });
+}
+
+function addToWatchlist(code, name) {
+    const list = getWatchlist();
+    if (!list.find(s => s.code === code)) {
+        list.unshift({ code, name });
+        saveWatchlist(list);
+        renderWatchlist();
+    }
+    hideAddModal();
+}
+
+function removeFromWatchlist(code) {
+    const list = getWatchlist().filter(s => s.code !== code);
+    saveWatchlist(list);
+    renderWatchlist();
+}
+
+// Modal functions
+function showAddModal() {
+    document.getElementById('add-modal').style.display = 'flex';
+    document.getElementById('search-input').value = '';
+    document.getElementById('modal-search-results').innerHTML = '';
+    document.getElementById('search-input').focus();
+}
+
+function hideAddModal() {
+    document.getElementById('add-modal').style.display = 'none';
+}
+
+let searchTimeout;
+function searchStocks() {
+    const q = document.getElementById('search-input').value.trim();
+    clearTimeout(searchTimeout);
+    if (q.length < 1) {
+        document.getElementById('modal-search-results').innerHTML = '';
+        return;
+    }
+    searchTimeout = setTimeout(() => {
+        fetch('/api/search?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(data => {
+                const html = data.map(s => `
+                    <button class="search-result-item" onclick="addToWatchlist('${s.stock_code}', '${s.short_name}')">
+                        <span class="code">${s.stock_code}</span>
+                        <span class="name">${s.short_name}</span>
+                    </button>
+                `).join('');
+                document.getElementById('modal-search-results').innerHTML = html || '<p class="text-secondary small">未找到</p>';
+            });
+    }, 200);
+}
+
+// Close modal on escape or click outside
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') hideAddModal();
+});
+document.getElementById('add-modal').addEventListener('click', e => {
+    if (e.target.id === 'add-modal') hideAddModal();
+});
+
+// Initialize
+renderWatchlist();
+</script>
+{% endblock %}

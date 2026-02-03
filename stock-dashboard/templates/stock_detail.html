@@ -1,0 +1,624 @@
+{% extends "base.html" %}
+
+{% block title %}{{ stock_name }} {{ stock_code }}{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <!-- Header -->
+    <div class="row mb-5">
+        <div class="col">
+            <a href="/" class="text-secondary small">← 返回</a>
+            <div class="d-flex align-items-center mt-3">
+                <h1 class="me-3 mb-0">{{ stock_name }}</h1>
+                <span class="text-secondary me-3">{{ stock_code }}</span>
+                <button id="watchlist-btn" class="btn-watchlist" onclick="toggleWatchlist()">
+                    <span id="watchlist-icon">☆</span> 自选
+                </button>
+            </div>
+        </div>
+        <div class="col-auto text-end" id="price-section">
+            <div class="price-loading">加载中...</div>
+        </div>
+    </div>
+
+    <!-- Signal -->
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <div id="signal-box" class="signal-box">
+                <div class="signal-label">综合评估</div>
+                <div id="signal-value" class="signal-value">分析中...</div>
+                <div id="signal-score" class="signal-score">--</div>
+            </div>
+            <p id="signal-summary" class="mt-4 text-secondary">正在获取数据并进行分析...</p>
+        </div>
+    </div>
+
+    <!-- K-Line Chart -->
+    <div class="row mb-4">
+        <div class="col-lg-10">
+            <div class="chart-box">
+                <div class="chart-header">
+                    <span class="chart-title">K线图</span>
+                    <div class="chart-btns">
+                        <button class="chart-btn active" onclick="loadKline(30)">30日</button>
+                        <button class="chart-btn" onclick="loadKline(60)">60日</button>
+                        <button class="chart-btn" onclick="loadKline(120)">120日</button>
+                    </div>
+                </div>
+                <div id="kline-chart" style="height:400px;"><p class="text-secondary p-4">加载图表组件...</p></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ML Prediction -->
+    <div class="row mb-4" id="ml-section" style="display:none;">
+        <div class="col-lg-8">
+            <div class="ml-box">
+                <div class="ml-header">
+                    <span class="ml-title">AI预测</span>
+                    <button class="btn-add" onclick="trainModel()">训练模型</button>
+                </div>
+                <div id="ml-content">
+                    <p class="text-secondary small">点击"训练模型"开始AI分析</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fundamental Data -->
+    <div class="row mb-4" id="fundamental-section" style="display:none;">
+        <div class="col-lg-8">
+            <div class="fundamental-box">
+                <div class="fundamental-header">基本面</div>
+                <div id="fundamental-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Risk Management -->
+    <div class="row mb-5">
+        <div class="col-lg-8">
+            <div id="risk-section" class="risk-box" style="display:none;">
+                <div class="risk-header">风险管理建议</div>
+                <div class="risk-row">
+                    <div class="risk-item">
+                        <span class="risk-label">止损价</span>
+                        <span class="risk-value down" id="stop-loss">--</span>
+                        <span class="risk-pct" id="stop-pct"></span>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-label">目标价</span>
+                        <span class="risk-value up" id="take-profit">--</span>
+                        <span class="risk-pct" id="profit-pct"></span>
+                    </div>
+                    <div class="risk-item">
+                        <span class="risk-label">波动率(ATR)</span>
+                        <span class="risk-value" id="atr-value">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indicators -->
+    <div class="row">
+        <div class="col-lg-8">
+            <table class="indicator-table">
+                <thead>
+                    <tr>
+                        <th>指标</th>
+                        <th>信号</th>
+                        <th class="text-end">贡献</th>
+                    </tr>
+                </thead>
+                <tbody id="indicators-body">
+                    <tr><td colspan="3" class="text-secondary">加载中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Backtest -->
+    <div class="row mt-5">
+        <div class="col-lg-8">
+            <div class="backtest-section">
+                <div class="d-flex align-items-center mb-3">
+                    <span class="text-secondary small me-3">历史回测</span>
+                    <button id="backtest-btn" class="btn-add" onclick="loadBacktest()">查看准确率</button>
+                </div>
+                <div id="backtest-result" style="display:none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Price Info -->
+    <div class="row mt-5 pt-5 border-top" id="price-info" style="display:none;">
+        <div class="col-lg-8">
+            <p class="text-secondary small mb-3" id="trade-date-label"></p>
+            <div class="price-row" id="price-row"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js"></script>
+<script>if(typeof echarts==='undefined')document.write('<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"><\/script>')</script>
+<script>if(typeof echarts==='undefined')document.write('<script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"><\/script>')</script>
+<script>
+const stockCode = '{{ stock_code }}';
+const stockName = '{{ stock_name }}';
+let klineChart = null;
+
+// Watchlist functions
+function getWatchlist() {
+    const data = localStorage.getItem('watchlist');
+    return data ? JSON.parse(data) : [];
+}
+
+function saveWatchlist(list) {
+    localStorage.setItem('watchlist', JSON.stringify(list));
+}
+
+function isInWatchlist() {
+    return getWatchlist().some(s => s.code === stockCode);
+}
+
+function updateWatchlistBtn() {
+    const btn = document.getElementById('watchlist-btn');
+    const icon = document.getElementById('watchlist-icon');
+    if (isInWatchlist()) {
+        btn.classList.add('active');
+        icon.textContent = '★';
+    } else {
+        btn.classList.remove('active');
+        icon.textContent = '☆';
+    }
+}
+
+function toggleWatchlist() {
+    let list = getWatchlist();
+    if (isInWatchlist()) {
+        list = list.filter(s => s.code !== stockCode);
+    } else {
+        list.unshift({ code: stockCode, name: stockName });
+    }
+    saveWatchlist(list);
+    updateWatchlistBtn();
+}
+
+// Load signal data
+function loadSignalData() {
+    fetch('/api/stock/' + stockCode + '/signal')
+        .then(r => r.json())
+        .then(data => {
+            // Update signal box
+            const box = document.getElementById('signal-box');
+            box.className = 'signal-box ' + data.signal;
+            document.getElementById('signal-value').textContent = data.signal_cn;
+            document.getElementById('signal-score').textContent = Math.round(data.score * 100) + ' / 100';
+            document.getElementById('signal-summary').textContent = data.simple_summary;
+
+            // Update indicators
+            const tbody = document.getElementById('indicators-body');
+            tbody.innerHTML = data.indicators.map(ind => {
+                const signalText = ind.signal === 'bullish' ? '看涨' : (ind.signal === 'bearish' ? '看跌' : '中性');
+                const scoreClass = ind.weighted_score > 0 ? 'up' : (ind.weighted_score < 0 ? 'down' : '');
+                const scorePrefix = ind.weighted_score > 0 ? '+' : '';
+                return `
+                    <tr>
+                        <td>
+                            <div>${ind.name}</div>
+                            <div class="explain">${ind.plain_explanation}</div>
+                        </td>
+                        <td>
+                            <span class="signal-tag ${ind.signal}">${signalText}</span>
+                        </td>
+                        <td class="text-end ${scoreClass}">
+                            ${scorePrefix}${(ind.weighted_score * 100).toFixed(1)}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Update risk management section
+            if (data.stop_loss && data.take_profit) {
+                document.getElementById('stop-loss').textContent = data.stop_loss.toFixed(2);
+                document.getElementById('take-profit').textContent = data.take_profit.toFixed(2);
+                if (data.risk_info) {
+                    document.getElementById('stop-pct').textContent = `(${data.risk_info.stop_pct}%)`;
+                    document.getElementById('profit-pct').textContent = `(+${data.risk_info.profit_pct}%)`;
+                    document.getElementById('atr-value').textContent = `${data.risk_info.atr} (${data.risk_info.atr_pct}%)`;
+                }
+                document.getElementById('risk-section').style.display = 'block';
+            }
+
+            // Show ML section
+            document.getElementById('ml-section').style.display = 'block';
+            if (data.ml_prediction) {
+                showMLPrediction(data.ml_prediction);
+            }
+
+            // Show fundamental data
+            if (data.fundamental && data.fundamental.has_data) {
+                showFundamental(data.fundamental);
+            }
+        })
+        .catch(err => {
+            console.error('Error loading signal:', err);
+            document.getElementById('signal-value').textContent = '加载失败';
+        });
+}
+
+// Show ML prediction
+function showMLPrediction(ml) {
+    const predClass = ml.prediction === 'bullish' ? 'up' : 'down';
+    const predText = ml.prediction === 'bullish' ? '看涨' : '看跌';
+    document.getElementById('ml-content').innerHTML = `
+        <div class="ml-prediction">
+            <span class="ml-label">预测方向</span>
+            <span class="ml-value ${predClass}">${predText}</span>
+            <span class="ml-confidence">置信度 ${ml.confidence}%</span>
+        </div>
+        <div class="ml-probs">
+            <span class="up">上涨概率 ${ml.prob_up}%</span>
+            <span class="down">下跌概率 ${ml.prob_down}%</span>
+        </div>
+    `;
+}
+
+// Train ML model
+function trainModel() {
+    document.getElementById('ml-content').innerHTML = '<p class="text-secondary">训练中...</p>';
+
+    fetch('/api/stock/' + stockCode + '/ml/train')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('ml-content').innerHTML = `<p class="text-secondary">${data.error}</p>`;
+                return;
+            }
+
+            // Show training result and then predict
+            document.getElementById('ml-content').innerHTML = `
+                <div class="ml-train-result">
+                    <p>模型训练完成</p>
+                    <p class="small text-secondary">
+                        交叉验证准确率: ${data.accuracy}% (±${data.accuracy_std}%)<br>
+                        训练样本: ${data.samples}个<br>
+                        重要特征: ${data.top_features.map(f => f.name).slice(0, 3).join(', ')}
+                    </p>
+                </div>
+            `;
+
+            // Now predict
+            fetch('/api/stock/' + stockCode + '/ml/predict')
+                .then(r => r.json())
+                .then(pred => {
+                    if (!pred.error) {
+                        showMLPrediction(pred);
+                    }
+                });
+        })
+        .catch(err => {
+            document.getElementById('ml-content').innerHTML = '<p class="text-secondary">训练失败</p>';
+        });
+}
+
+// Show fundamental data
+function showFundamental(fund) {
+    document.getElementById('fundamental-section').style.display = 'block';
+
+    let html = '<div class="fundamental-grid">';
+
+    if (fund.market_cap_yi) {
+        html += `<div class="fund-item"><span class="fund-label">市值</span><span class="fund-value">${fund.market_cap_yi}亿</span></div>`;
+    }
+    if (fund.industry) {
+        html += `<div class="fund-item"><span class="fund-label">行业</span><span class="fund-value">${fund.industry}</span></div>`;
+    }
+    if (fund.has_dividend !== undefined) {
+        html += `<div class="fund-item"><span class="fund-label">分红</span><span class="fund-value">${fund.has_dividend ? '有 ('+fund.dividend_count+'次)' : '无'}</span></div>`;
+    }
+
+    html += '</div>';
+
+    if (fund.reasons && fund.reasons.length > 0) {
+        html += '<div class="fund-reasons">';
+        fund.reasons.forEach(r => {
+            html += `<span class="fund-reason">${r}</span>`;
+        });
+        html += '</div>';
+    }
+
+    if (fund.concepts && fund.concepts.length > 0) {
+        html += '<div class="fund-concepts">';
+        html += '<span class="fund-label">概念: </span>';
+        fund.concepts.forEach(c => {
+            html += `<span class="fund-concept">${c}</span>`;
+        });
+        html += '</div>';
+    }
+
+    document.getElementById('fundamental-content').innerHTML = html;
+}
+
+// Load quote data
+function loadQuoteData() {
+    fetch('/api/stock/' + stockCode + '/quote')
+        .then(r => r.json())
+        .then(data => {
+            if (!data || data.error) {
+                document.getElementById('price-section').innerHTML = '<div class="text-secondary">暂无行情</div>';
+                return;
+            }
+
+            const priceClass = data.change_pct >= 0 ? 'up' : 'down';
+            const changePrefix = data.change_pct >= 0 ? '+' : '';
+            document.getElementById('price-section').innerHTML = `
+                <div class="price ${priceClass}">${data.price.toFixed(2)}</div>
+                <div class="change ${priceClass}">${changePrefix}${data.change_pct.toFixed(2)}%</div>
+            `;
+
+            // Show price info
+            const today = new Date();
+            const dateStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
+            document.getElementById('trade-date-label').textContent = dateStr + ' 行情';
+            document.getElementById('price-row').innerHTML = `
+                <div class="price-item">
+                    <span class="label">开盘</span>
+                    <span class="value">${data.open.toFixed(2)}</span>
+                </div>
+                <div class="price-item">
+                    <span class="label">最高</span>
+                    <span class="value up">${data.high.toFixed(2)}</span>
+                </div>
+                <div class="price-item">
+                    <span class="label">最低</span>
+                    <span class="value down">${data.low.toFixed(2)}</span>
+                </div>
+                <div class="price-item">
+                    <span class="label">昨收</span>
+                    <span class="value">${data.pre_close.toFixed(2)}</span>
+                </div>
+                <div class="price-item">
+                    <span class="label">成交额</span>
+                    <span class="value">${(data.amount / 100000000).toFixed(1)}亿</span>
+                </div>
+            `;
+            document.getElementById('price-info').style.display = 'block';
+        })
+        .catch(err => {
+            console.error('Error loading quote:', err);
+            document.getElementById('price-section').innerHTML = '<div class="text-secondary">行情获取失败</div>';
+        });
+}
+
+// Load backtest data
+function loadBacktest() {
+    const btn = document.getElementById('backtest-btn');
+    const result = document.getElementById('backtest-result');
+    btn.textContent = '加载中...';
+    btn.disabled = true;
+
+    fetch('/api/stock/' + stockCode + '/backtest?days=60')
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                result.innerHTML = '<p class="text-secondary">数据不足，无法回测</p>';
+            } else {
+                result.innerHTML = `
+                    <div class="backtest-stats">
+                        <div class="backtest-item">
+                            <span class="backtest-label">买入信号</span>
+                            <span class="backtest-value">${data.buy_signals}次</span>
+                            <span class="backtest-detail">准确率 ${data.buy_accuracy}%，平均收益 ${data.buy_avg_return > 0 ? '+' : ''}${data.buy_avg_return}%</span>
+                        </div>
+                        <div class="backtest-item">
+                            <span class="backtest-label">卖出信号</span>
+                            <span class="backtest-value">${data.sell_signals}次</span>
+                            <span class="backtest-detail">准确率 ${data.sell_accuracy}%，平均收益 ${data.sell_avg_return > 0 ? '+' : ''}${data.sell_avg_return}%</span>
+                        </div>
+                    </div>
+                    <p class="text-secondary small mt-2">基于过去${data.period}的历史数据回测，5日收益率判定</p>
+                `;
+            }
+            result.style.display = 'block';
+            btn.style.display = 'none';
+        })
+        .catch(err => {
+            console.error('Error loading backtest:', err);
+            result.innerHTML = '<p class="text-secondary">回测加载失败</p>';
+            result.style.display = 'block';
+            btn.textContent = '重试';
+            btn.disabled = false;
+        });
+}
+
+// Load K-line chart
+function loadKline(days) {
+    // Check if ECharts is loaded
+    if (typeof echarts === 'undefined') {
+        document.getElementById('kline-chart').innerHTML = '<p class="text-secondary p-4">图表组件加载中，请稍候...</p>';
+        setTimeout(function() { loadKline(days); }, 500);
+        return;
+    }
+
+    // Update button states
+    document.querySelectorAll('.chart-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.textContent.includes(days)) btn.classList.add('active');
+    });
+
+    document.getElementById('kline-chart').innerHTML = '<p class="text-secondary p-4">加载K线数据...</p>';
+
+    // Use XMLHttpRequest for better compatibility
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', '/api/stock/' + stockCode + '/kline?days=' + days, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    if (data.error || !data.dates || data.dates.length === 0) {
+                        document.getElementById('kline-chart').innerHTML = '<p class="text-secondary p-4">暂无K线数据</p>';
+                        return;
+                    }
+                    renderKlineChart(data);
+                } catch (e) {
+                    console.error('JSON parse error:', e);
+                    document.getElementById('kline-chart').innerHTML = '<p class="text-secondary p-4">数据解析失败</p>';
+                }
+            } else {
+                document.getElementById('kline-chart').innerHTML = '<p class="text-secondary p-4">K线数据加载失败</p>';
+            }
+        }
+    };
+    xhr.onerror = function() {
+        document.getElementById('kline-chart').innerHTML = '<p class="text-secondary p-4">网络错误</p>';
+    };
+    xhr.send();
+}
+
+function renderKlineChart(data) {
+    const chartDom = document.getElementById('kline-chart');
+    if (!klineChart) {
+        klineChart = echarts.init(chartDom);
+    }
+
+    const upColor = '#ef5350';
+    const downColor = '#26a69a';
+
+    const option = {
+        animation: false,
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'cross' },
+            formatter: function(params) {
+                const kline = params.find(p => p.seriesName === 'K线');
+                if (!kline) return '';
+                const d = kline.data;
+                return `${kline.axisValue}<br/>
+                    开: ${d[1]}<br/>
+                    高: ${d[4]}<br/>
+                    低: ${d[3]}<br/>
+                    收: ${d[2]}`;
+            }
+        },
+        legend: {
+            data: ['K线', 'MA5', 'MA10', 'MA20'],
+            top: 10,
+            left: 'center',
+            textStyle: { fontSize: 11 }
+        },
+        grid: [
+            { left: '8%', right: '3%', top: '12%', height: '55%' },
+            { left: '8%', right: '3%', top: '72%', height: '18%' }
+        ],
+        xAxis: [
+            {
+                type: 'category',
+                data: data.dates,
+                scale: true,
+                boundaryGap: true,
+                axisLine: { lineStyle: { color: '#ccc' } },
+                axisLabel: { fontSize: 10 },
+                splitLine: { show: false }
+            },
+            {
+                type: 'category',
+                gridIndex: 1,
+                data: data.dates,
+                axisLabel: { show: false },
+                axisLine: { show: false },
+                axisTick: { show: false },
+                splitLine: { show: false }
+            }
+        ],
+        yAxis: [
+            {
+                scale: true,
+                splitArea: { show: false },
+                axisLine: { lineStyle: { color: '#ccc' } },
+                axisLabel: { fontSize: 10 },
+                splitLine: { lineStyle: { color: '#f0f0f0' } }
+            },
+            {
+                gridIndex: 1,
+                splitNumber: 2,
+                axisLabel: { show: false },
+                axisLine: { show: false },
+                axisTick: { show: false },
+                splitLine: { show: false }
+            }
+        ],
+        dataZoom: [
+            { type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 },
+            { type: 'slider', xAxisIndex: [0, 1], start: 50, end: 100, height: 20, bottom: 5 }
+        ],
+        series: [
+            {
+                name: 'K线',
+                type: 'candlestick',
+                data: data.kline,
+                itemStyle: {
+                    color: upColor,
+                    color0: downColor,
+                    borderColor: upColor,
+                    borderColor0: downColor
+                }
+            },
+            {
+                name: 'MA5',
+                type: 'line',
+                data: data.ma5,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1, color: '#f0a' }
+            },
+            {
+                name: 'MA10',
+                type: 'line',
+                data: data.ma10,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1, color: '#0af' }
+            },
+            {
+                name: 'MA20',
+                type: 'line',
+                data: data.ma20,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: { width: 1, color: '#fa0' }
+            },
+            {
+                name: '成交量',
+                type: 'bar',
+                xAxisIndex: 1,
+                yAxisIndex: 1,
+                data: data.volume,
+                barWidth: '60%'
+            }
+        ]
+    };
+
+    klineChart.setOption(option);
+}
+
+// Handle window resize
+window.addEventListener('resize', function() {
+    if (klineChart) klineChart.resize();
+});
+
+// Initialize
+updateWatchlistBtn();
+loadSignalData();
+loadQuoteData();
+
+// Wait a bit for ECharts to load, then render K-line
+setTimeout(function() {
+    loadKline(60);
+}, 100);
+</script>
+{% endblock %}

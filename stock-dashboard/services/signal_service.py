@@ -1,0 +1,623 @@
+from services import data_service, indicator_service, ml_service, fundamental_service
+
+# IMPROVED weights based on backtesting analysis
+# Key findings:
+# - RSI oversold works (55%), overbought doesn't (37%)
+# - Momentum after big moves: 66.7% accuracy
+# - Individual indicators ~50% but combinations help
+# - Strong signals (>0.4) work better: 56.7%
+WEIGHTS = {
+    'ma': 0.15,
+    'macd': 0.15,
+    'momentum': 0.18,     # NEW: Price momentum (highest accuracy)
+    'kdj': 0.12,
+    'bollinger': 0.10,
+    'rsi': 0.10,          # Reduced: only oversold works well
+    'volume': 0.08,
+    'capital_flow': 0.08,
+    'weekly': 0.04
+}
+
+def analyze_ma(df):
+    """Analyze MA trend."""
+    result = indicator_service.get_ma_trend(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 60:
+        return {
+            'name': '均线',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['ma'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    alignment = details.get('alignment', 'mixed')
+    price_pos = details.get('price_position', 2)
+    slope = details.get('ma_slope', 0)
+
+    if alignment == 'bullish':
+        if slope > 0.02:
+            exp = '均线多头排列且向上发散，趋势向上明确'
+        else:
+            exp = '均线多头排列，短期趋势偏多'
+    elif alignment == 'bearish':
+        if slope < -0.02:
+            exp = '均线空头排列且向下发散，趋势向下明确'
+        else:
+            exp = '均线空头排列，短期趋势偏空'
+    else:
+        if price_pos >= 3:
+            exp = '均线交织但股价在多数均线上方，方向待确认'
+        elif price_pos <= 1:
+            exp = '均线交织但股价在多数均线下方，方向待确认'
+        else:
+            exp = '均线交织，趋势不明'
+
+    return {
+        'name': '均线',
+        'signal': result['trend'],
+        'score': score,
+        'weight': WEIGHTS['ma'],
+        'weighted_score': score * WEIGHTS['ma'],
+        'plain_explanation': exp
+    }
+
+def analyze_macd(df):
+    """Analyze MACD."""
+    result = indicator_service.get_macd_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 30:
+        return {
+            'name': 'MACD',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['macd'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    hist_trend = details.get('histogram_trend', 'contracting')
+    above_zero = details.get('above_zero', False)
+
+    if score > 0.5:
+        exp = 'MACD金叉或红柱持续放大，短期动能强'
+    elif score > 0.2:
+        if above_zero:
+            exp = 'MACD在零轴上方，多头动能占优'
+        else:
+            exp = 'MACD虽在零轴下方但动能转强'
+    elif score < -0.5:
+        exp = 'MACD死叉或绿柱持续放大，短期动能弱'
+    elif score < -0.2:
+        if not above_zero:
+            exp = 'MACD在零轴下方，空头动能占优'
+        else:
+            exp = 'MACD虽在零轴上方但动能转弱'
+    else:
+        exp = 'MACD动能平衡，方向不明'
+
+    return {
+        'name': 'MACD',
+        'signal': result['signal'],
+        'score': score,
+        'weight': WEIGHTS['macd'],
+        'weighted_score': score * WEIGHTS['macd'],
+        'plain_explanation': exp
+    }
+
+def analyze_kdj(df):
+    """Analyze KDJ indicator."""
+    result = indicator_service.get_kdj_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 9:
+        return {
+            'name': 'KDJ',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['kdj'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    k = details.get('k', 50)
+    d = details.get('d', 50)
+    j = details.get('j', 50)
+    level = details.get('level', 'normal')
+
+    if score > 0.5:
+        exp = f'KDJ金叉，J值{j:.0f}从超卖区回升，买入信号'
+    elif score > 0.2:
+        if level == 'oversold':
+            exp = f'KDJ处于超卖区(K={k:.0f})，可能反弹'
+        else:
+            exp = f'KDJ偏多(K={k:.0f},D={d:.0f})，短期向上'
+    elif score < -0.5:
+        exp = f'KDJ死叉，J值{j:.0f}从超买区回落，卖出信号'
+    elif score < -0.2:
+        if level == 'overbought':
+            exp = f'KDJ处于超买区(K={k:.0f})，注意回调风险'
+        else:
+            exp = f'KDJ偏空(K={k:.0f},D={d:.0f})，短期向下'
+    else:
+        exp = f'KDJ中性(K={k:.0f},D={d:.0f})，方向不明'
+
+    return {
+        'name': 'KDJ',
+        'signal': result['signal'],
+        'score': score,
+        'weight': WEIGHTS['kdj'],
+        'weighted_score': score * WEIGHTS['kdj'],
+        'plain_explanation': exp
+    }
+
+def analyze_bollinger(df):
+    """Analyze Bollinger Bands."""
+    result = indicator_service.get_bollinger_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 20:
+        return {
+            'name': '布林带',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['bollinger'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    pct_b = details.get('pct_b', 0.5)
+    position = details.get('position', 'middle')
+    volatility = details.get('volatility', 'normal')
+
+    if position == 'below':
+        if volatility == 'squeeze':
+            exp = '股价触及下轨且波动收窄，等待突破方向'
+        else:
+            exp = '股价触及下轨，可能超卖反弹'
+    elif position == 'above':
+        if volatility == 'squeeze':
+            exp = '股价触及上轨且波动收窄，等待突破方向'
+        else:
+            exp = '股价触及上轨，注意获利回吐'
+    else:
+        if volatility == 'squeeze':
+            exp = '布林带收窄，即将选择方向突破'
+        elif volatility == 'expanding':
+            exp = '布林带扩张，趋势正在形成'
+        else:
+            exp = '股价在布林带中轨附近震荡'
+
+    return {
+        'name': '布林带',
+        'signal': result['signal'],
+        'score': score,
+        'weight': WEIGHTS['bollinger'],
+        'weighted_score': score * WEIGHTS['bollinger'],
+        'plain_explanation': exp
+    }
+
+def analyze_rsi(df):
+    """Analyze RSI."""
+    result = indicator_service.get_rsi_signal(df)
+    score = result['score']
+    rsi = result.get('rsi', 50)
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 14:
+        return {
+            'name': 'RSI',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['rsi'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    level = details.get('level', 'normal')
+    trend = details.get('trend', 'flat')
+
+    if level == 'oversold':
+        if trend == 'rising':
+            exp = f'RSI {rsi:.0f} 超卖后回升，可能反弹'
+        else:
+            exp = f'RSI {rsi:.0f} 处于超卖区，但尚未企稳'
+    elif level == 'overbought':
+        if trend == 'falling':
+            exp = f'RSI {rsi:.0f} 超买后回落，可能调整'
+        else:
+            exp = f'RSI {rsi:.0f} 处于超买区，注意风险'
+    else:
+        exp = f'RSI {rsi:.0f} 处于正常区间'
+
+    return {
+        'name': 'RSI',
+        'signal': result['signal'],
+        'score': score,
+        'weight': WEIGHTS['rsi'],
+        'weighted_score': score * WEIGHTS['rsi'],
+        'plain_explanation': exp
+    }
+
+def analyze_volume(df):
+    """Analyze volume."""
+    result = indicator_service.get_volume_signal(df)
+    score = result['score']
+    vol_ratio = result.get('volume_ratio', 1)
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 20:
+        return {
+            'name': '成交量',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['volume'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    latest = df.iloc[-1]
+    change_pct = latest.get('change_pct', 0)
+    level = details.get('level', 'normal')
+
+    if level == 'high':
+        if change_pct > 0:
+            exp = f'放量上涨（量比{vol_ratio:.1f}），资金流入'
+        else:
+            exp = f'放量下跌（量比{vol_ratio:.1f}），资金流出'
+    elif level == 'low':
+        exp = f'缩量（量比{vol_ratio:.1f}），观望情绪浓'
+    else:
+        exp = f'成交量正常（量比{vol_ratio:.1f}）'
+
+    return {
+        'name': '成交量',
+        'signal': result['signal'],
+        'score': score,
+        'weight': WEIGHTS['volume'],
+        'weighted_score': score * WEIGHTS['volume'],
+        'plain_explanation': exp
+    }
+
+def analyze_capital_flow(stock_code):
+    """Analyze capital flow."""
+    flows = data_service.get_capital_flow(stock_code, days=5)
+
+    if not flows:
+        return {
+            'name': '资金',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['capital_flow'],
+            'weighted_score': 0,
+            'plain_explanation': '暂无数据'
+        }
+
+    total = sum(f.get('main_net_inflow', 0) for f in flows)
+    total_yi = total / 100000000
+
+    if total > 100000000:
+        score = 0.7
+        exp = f'5日主力净流入{total_yi:.1f}亿'
+    elif total > 30000000:
+        score = 0.4
+        exp = f'5日主力净流入{total/10000:.0f}万'
+    elif total > 0:
+        score = 0.15
+        exp = f'5日主力小幅流入'
+    elif total > -30000000:
+        score = -0.15
+        exp = f'5日主力小幅流出'
+    elif total > -100000000:
+        score = -0.4
+        exp = f'5日主力净流出{abs(total)/10000:.0f}万'
+    else:
+        score = -0.7
+        exp = f'5日主力净流出{abs(total_yi):.1f}亿'
+
+    signal = 'bullish' if score > 0.1 else ('bearish' if score < -0.1 else 'neutral')
+
+    return {
+        'name': '资金',
+        'signal': signal,
+        'score': score,
+        'weight': WEIGHTS['capital_flow'],
+        'weighted_score': score * WEIGHTS['capital_flow'],
+        'plain_explanation': exp
+    }
+
+def analyze_momentum(df):
+    """Analyze price momentum - ADAPTIVE strategy based on volatility."""
+    result = indicator_service.get_momentum_signal(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 20:
+        return {
+            'name': '动量',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['momentum'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    ret_5d = details.get('ret_5d', 0)
+    strategy = details.get('strategy', 'neutral')
+    volatility = details.get('volatility', 25)
+    in_uptrend = details.get('in_uptrend', False)
+
+    vol_desc = '高波动' if volatility > 30 else '低波动'
+
+    if strategy == 'mean_reversion':
+        if ret_5d < -5:
+            exp = f'{vol_desc}股，近5日跌{abs(ret_5d):.1f}%，超跌反弹机会'
+        else:
+            exp = f'{vol_desc}股，近5日跌{abs(ret_5d):.1f}%，关注反弹'
+    elif strategy == 'trend_follow':
+        if in_uptrend:
+            exp = f'{vol_desc}股，处于上升趋势，顺势看多'
+        else:
+            exp = f'{vol_desc}股，处于下降趋势，谨慎观望'
+    elif strategy == 'momentum':
+        exp = f'近5日涨{ret_5d:.1f}%，上涨动量持续'
+    else:
+        if ret_5d > 0:
+            exp = f'近5日涨{ret_5d:.1f}%，走势平稳'
+        else:
+            exp = f'近5日跌{abs(ret_5d):.1f}%，走势偏弱'
+
+    return {
+        'name': '动量',
+        'signal': result['signal'],
+        'score': score,
+        'weight': WEIGHTS['momentum'],
+        'weighted_score': score * WEIGHTS['momentum'],
+        'plain_explanation': exp
+    }
+
+
+def analyze_weekly_trend(df):
+    """Analyze weekly trend for multi-timeframe confirmation."""
+    result = indicator_service.get_weekly_trend(df)
+    score = result['score']
+    details = result.get('details', {})
+
+    if df.empty or len(df) < 20:
+        return {
+            'name': '周线',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': WEIGHTS['weekly'],
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
+
+    weekly_change = details.get('weekly_change', 0)
+
+    if score > 0.3:
+        exp = f'周线趋势向上（周涨{weekly_change:.1f}%），中期看多'
+    elif score > 0:
+        exp = f'周线偏多（周涨{weekly_change:.1f}%）'
+    elif score < -0.3:
+        exp = f'周线趋势向下（周跌{abs(weekly_change):.1f}%），中期看空'
+    elif score < 0:
+        exp = f'周线偏空（周跌{abs(weekly_change):.1f}%）'
+    else:
+        exp = '周线方向不明'
+
+    signal = 'bullish' if score > 0.1 else ('bearish' if score < -0.1 else 'neutral')
+
+    return {
+        'name': '周线',
+        'signal': signal,
+        'score': score,
+        'weight': WEIGHTS['weekly'],
+        'weighted_score': score * WEIGHTS['weekly'],
+        'plain_explanation': exp
+    }
+
+def generate_signal(stock_code):
+    """Generate comprehensive signal with all indicators."""
+    df = data_service.get_stock_kline(stock_code)
+
+    if df.empty:
+        return {
+            'stock_code': stock_code,
+            'signal': 'hold',
+            'signal_cn': '无数据',
+            'score': 0,
+            'confidence': 0,
+            'indicators': [],
+            'simple_summary': '无法获取数据',
+            'stop_loss': None,
+            'take_profit': None
+        }
+
+    df = indicator_service.calculate_all(df)
+
+    from services import db_service
+    db_service.save_daily_data(stock_code, df)
+
+    # Analyze all indicators (momentum added based on backtesting)
+    indicators = [
+        analyze_ma(df),
+        analyze_macd(df),
+        analyze_momentum(df),  # NEW: Price momentum
+        analyze_kdj(df),
+        analyze_bollinger(df),
+        analyze_rsi(df),
+        analyze_volume(df),
+        analyze_capital_flow(stock_code),
+        analyze_weekly_trend(df)
+    ]
+
+    total_score = sum(ind['weighted_score'] for ind in indicators)
+
+    # Get stop-loss suggestion
+    stop_info = indicator_service.get_stop_loss_suggestion(df)
+
+    # IMPROVED: Higher thresholds based on backtesting
+    # Strong signals (>0.4) had 56.7% accuracy vs 50% for weaker signals
+    if total_score >= 0.35:
+        signal, signal_cn = 'strong_buy', '强烈看多'
+    elif total_score >= 0.18:
+        signal, signal_cn = 'buy', '看多'
+    elif total_score <= -0.35:
+        signal, signal_cn = 'strong_sell', '强烈看空'
+    elif total_score <= -0.18:
+        signal, signal_cn = 'sell', '看空'
+    else:
+        signal, signal_cn = 'hold', '中性'
+
+    bullish = [i['name'] for i in indicators if i['signal'] == 'bullish']
+    bearish = [i['name'] for i in indicators if i['signal'] == 'bearish']
+
+    if total_score >= 0.4:
+        summary = f"{', '.join(bullish)}均看多，技术面强势"
+    elif total_score >= 0.15:
+        summary = f"{', '.join(bullish)}偏多，可关注"
+    elif total_score <= -0.4:
+        summary = f"{', '.join(bearish)}均看空，技术面弱势"
+    elif total_score <= -0.15:
+        summary = f"{', '.join(bearish)}偏空，需谨慎"
+    else:
+        summary = "多空分歧，方向不明"
+
+    confidence = int(max(len(bullish), len(bearish)) / len(indicators) * 100)
+
+    # Get ML prediction if available
+    ml_prediction = None
+    try:
+        ml_result, ml_error = ml_service.predict(stock_code, df)
+        if ml_result is None:
+            ml_result, ml_error = ml_service.predict_with_general_model(df)
+        if ml_result:
+            ml_prediction = ml_result
+    except Exception as e:
+        pass
+
+    # Get fundamental data
+    fundamental = None
+    try:
+        quote = data_service.get_realtime_quote(stock_code)
+        price = quote.get('price', 0) if quote else df.iloc[-1]['close']
+        fund_summary = fundamental_service.get_fundamental_summary(stock_code, price)
+        fund_score = fundamental_service.get_fundamental_score(stock_code, price)
+        if fund_summary.get('has_data'):
+            fundamental = {
+                **fund_summary,
+                'score': fund_score['score'],
+                'reasons': fund_score['reasons']
+            }
+    except Exception as e:
+        pass
+
+    return {
+        'stock_code': stock_code,
+        'signal': signal,
+        'signal_cn': signal_cn,
+        'score': round(total_score, 3),
+        'confidence': confidence,
+        'indicators': indicators,
+        'simple_summary': summary,
+        'stop_loss': stop_info.get('stop_loss'),
+        'take_profit': stop_info.get('take_profit'),
+        'risk_info': stop_info.get('details', {}),
+        'ml_prediction': ml_prediction,
+        'fundamental': fundamental
+    }
+
+
+def backtest_signal(stock_code, lookback_days=60):
+    """Backtesting - check historical signal accuracy using full algorithm."""
+    df = data_service.get_stock_kline(stock_code, days=lookback_days + 30)
+
+    if df.empty or len(df) < lookback_days:
+        return {'error': 'Insufficient data', 'signals': []}
+
+    df = indicator_service.calculate_all(df)
+    results = []
+
+    # Generate signals for each day and check forward returns
+    for i in range(30, len(df) - 5):  # Need 5 days forward
+        day_df = df.iloc[:i+1].copy()
+
+        # Use all indicators with proper weights
+        ma = indicator_service.get_ma_trend(day_df)['score'] * WEIGHTS['ma']
+        macd = indicator_service.get_macd_signal(day_df)['score'] * WEIGHTS['macd']
+        momentum = indicator_service.get_momentum_signal(day_df)['score'] * WEIGHTS['momentum']
+        kdj = indicator_service.get_kdj_signal(day_df)['score'] * WEIGHTS['kdj']
+        boll = indicator_service.get_bollinger_signal(day_df)['score'] * WEIGHTS['bollinger']
+        rsi = indicator_service.get_rsi_signal(day_df)['score'] * WEIGHTS['rsi']
+        vol = indicator_service.get_volume_signal(day_df)['score'] * WEIGHTS['volume']
+        weekly = indicator_service.get_weekly_trend(day_df)['score'] * WEIGHTS['weekly']
+
+        score = ma + macd + momentum + kdj + boll + rsi + vol + weekly
+
+        # Check forward returns
+        entry_price = df.iloc[i]['close']
+        future_prices = df.iloc[i+1:i+6]['close'].values
+
+        if len(future_prices) >= 5:
+            return_5d = (future_prices[-1] - entry_price) / entry_price * 100
+            max_return = (max(future_prices) - entry_price) / entry_price * 100
+            min_return = (min(future_prices) - entry_price) / entry_price * 100
+
+            # Use same thresholds as generate_signal
+            if score > 0.18 and return_5d > 0:
+                correct = True
+            elif score < -0.18 and return_5d < 0:
+                correct = True
+            elif -0.18 <= score <= 0.18:
+                correct = None  # Neutral, not counted
+            else:
+                correct = False
+
+            results.append({
+                'date': df.iloc[i]['trade_date'],
+                'score': round(score, 3),
+                'signal': 'buy' if score > 0.18 else ('sell' if score < -0.18 else 'hold'),
+                'return_5d': round(return_5d, 2),
+                'max_return': round(max_return, 2),
+                'min_return': round(min_return, 2),
+                'correct': correct
+            })
+
+    # Calculate stats
+    buy_signals = [r for r in results if r['signal'] == 'buy']
+    sell_signals = [r for r in results if r['signal'] == 'sell']
+
+    buy_correct = len([r for r in buy_signals if r['correct'] == True])
+    sell_correct = len([r for r in sell_signals if r['correct'] == True])
+
+    return {
+        'stock_code': stock_code,
+        'period': f'{lookback_days} days',
+        'total_signals': len(buy_signals) + len(sell_signals),
+        'buy_signals': len(buy_signals),
+        'buy_accuracy': round(buy_correct / len(buy_signals) * 100, 1) if buy_signals else 0,
+        'buy_avg_return': round(sum(r['return_5d'] for r in buy_signals) / len(buy_signals), 2) if buy_signals else 0,
+        'sell_signals': len(sell_signals),
+        'sell_accuracy': round(sell_correct / len(sell_signals) * 100, 1) if sell_signals else 0,
+        'sell_avg_return': round(sum(r['return_5d'] for r in sell_signals) / len(sell_signals), 2) if sell_signals else 0,
+        'recent_signals': results[-10:] if results else []
+    }
+
+
+def get_signal_color(signal):
+    colors = {
+        'strong_buy': '#d1242f',
+        'buy': '#d1242f',
+        'hold': '#666',
+        'sell': '#1a7f37',
+        'strong_sell': '#1a7f37'
+    }
+    return colors.get(signal, '#666')
