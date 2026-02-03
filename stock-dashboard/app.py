@@ -589,16 +589,16 @@ def api_52week(code):
 @app.route('/api/stock/<code>/ai-analysis', methods=['POST'])
 def api_ai_analysis(code):
     """
-    Generate AI-powered analysis using user's OpenAI API key.
+    Generate AI-powered analysis using user's API key.
 
     Combines:
     - Our technical analysis data (indicators, CYQ, strategies)
-    - GPT web search for recent news and policy
-    - Comprehensive investment advice
+    - LLM analysis for comprehensive insights
+    - Investment advice
 
     Request body:
     {
-        "api_key": "sk-xxx..."  // User's OpenAI API key
+        "api_key": "..."  // User's API key (OpenAI, Claude, etc.)
     }
     """
     from services import ai_service, cyq_service, strategy_service
@@ -813,12 +813,30 @@ def api_historical_accuracy(code):
     result = signal_service.backtest_signal(code, lookback_days=120)
     if result.get('error'):
         return jsonify(result)
+
+    # Calculate overall accuracy from buy and sell accuracy
+    buy_signals = result.get('buy_signals', 0)
+    sell_signals = result.get('sell_signals', 0)
+    total = buy_signals + sell_signals
+
+    if total > 0:
+        # Weighted average of buy and sell accuracy
+        buy_acc = result.get('buy_accuracy', 0)
+        sell_acc = result.get('sell_accuracy', 0)
+        accuracy = (buy_acc * buy_signals + sell_acc * sell_signals) / total
+    else:
+        accuracy = 0
+
     return jsonify({
         'stock_code': code,
-        'accuracy': result.get('accuracy', 0),
-        'total_signals': result.get('total_signals', 0),
+        'accuracy': round(accuracy, 1),
+        'total_signals': total,
+        'buy_signals': buy_signals,
+        'sell_signals': sell_signals,
+        'buy_accuracy': result.get('buy_accuracy', 0),
+        'sell_accuracy': result.get('sell_accuracy', 0),
         'period': result.get('period', ''),
-        'reliability': 'high' if result.get('accuracy', 0) > 55 else ('moderate' if result.get('accuracy', 0) > 45 else 'low')
+        'reliability': 'high' if accuracy > 55 else ('moderate' if accuracy > 45 else 'low')
     })
 
 

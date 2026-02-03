@@ -1129,7 +1129,7 @@ def backtest_signal(stock_code, lookback_days=60):
     for i in range(30, len(df) - 5):  # Need 5 days forward
         day_df = df.iloc[:i+1].copy()
 
-        # Use all indicators with proper weights
+        # Use all indicators with proper weights (matching generate_signal)
         ma = indicator_service.get_ma_trend(day_df)['score'] * WEIGHTS['ma']
         macd = indicator_service.get_macd_signal(day_df)['score'] * WEIGHTS['macd']
         momentum = indicator_service.get_momentum_signal(day_df)['score'] * WEIGHTS['momentum']
@@ -1139,7 +1139,11 @@ def backtest_signal(stock_code, lookback_days=60):
         vol = indicator_service.get_volume_signal(day_df)['score'] * WEIGHTS['volume']
         weekly = indicator_service.get_weekly_trend(day_df)['score'] * WEIGHTS['weekly']
 
-        score = ma + macd + momentum + kdj + boll + rsi + vol + weekly
+        # Include new indicators (supertrend, wave_trend)
+        supertrend = indicator_service.get_supertrend_signal(day_df)['score'] * WEIGHTS.get('supertrend', 0.18)
+        wave_trend = indicator_service.get_wave_trend_signal(day_df)['score'] * WEIGHTS.get('wave_trend', 0.10)
+
+        score = ma + macd + momentum + kdj + boll + rsi + vol + weekly + supertrend + wave_trend
 
         # Check forward returns
         entry_price = df.iloc[i]['close']
@@ -1150,12 +1154,12 @@ def backtest_signal(stock_code, lookback_days=60):
             max_return = (max(future_prices) - entry_price) / entry_price * 100
             min_return = (min(future_prices) - entry_price) / entry_price * 100
 
-            # Use same thresholds as generate_signal
-            if score > 0.18 and return_5d > 0:
+            # Use same thresholds as generate_signal (0.15 for buy/sell)
+            if score > 0.15 and return_5d > 0:
                 correct = True
-            elif score < -0.18 and return_5d < 0:
+            elif score < -0.15 and return_5d < 0:
                 correct = True
-            elif -0.18 <= score <= 0.18:
+            elif -0.15 <= score <= 0.15:
                 correct = None  # Neutral, not counted
             else:
                 correct = False
@@ -1163,7 +1167,7 @@ def backtest_signal(stock_code, lookback_days=60):
             results.append({
                 'date': df.iloc[i]['trade_date'],
                 'score': round(score, 3),
-                'signal': 'buy' if score > 0.18 else ('sell' if score < -0.18 else 'hold'),
+                'signal': 'buy' if score > 0.15 else ('sell' if score < -0.15 else 'hold'),
                 'return_5d': round(return_5d, 2),
                 'max_return': round(max_return, 2),
                 'min_return': round(min_return, 2),

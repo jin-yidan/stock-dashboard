@@ -96,8 +96,16 @@ function loadHistoricalAccuracy() {
 
             if (!section || !valueEl) return;
 
-            if (data.error) {
-                section.style.display = 'none';
+            if (data.error || data.total_signals === 0) {
+                // No signals generated, hide section or show message
+                if (data.total_signals === 0) {
+                    valueEl.textContent = '--';
+                    valueEl.className = 'accuracy-value';
+                    if (signalsEl) signalsEl.textContent = '信号不足';
+                    section.style.display = 'block';
+                } else {
+                    section.style.display = 'none';
+                }
                 return;
             }
 
@@ -108,7 +116,10 @@ function loadHistoricalAccuracy() {
             valueEl.className = 'accuracy-value ' + reliabilityClass;
 
             if (signalsEl) {
-                signalsEl.textContent = (data.total_signals || 0) + ' 个信号';
+                const buyInfo = data.buy_signals ? `买${data.buy_signals}` : '';
+                const sellInfo = data.sell_signals ? `卖${data.sell_signals}` : '';
+                const parts = [buyInfo, sellInfo].filter(x => x);
+                signalsEl.textContent = parts.length > 0 ? parts.join('/') + ' 个信号' : (data.total_signals || 0) + ' 个信号';
             }
             if (periodEl && data.period) {
                 periodEl.textContent = data.period;
