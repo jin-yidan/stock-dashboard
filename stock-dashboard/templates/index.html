@@ -68,6 +68,40 @@ function saveWatchlist(list) {
     localStorage.setItem('watchlist', JSON.stringify(list));
 }
 
+// Quote cache functions
+function getQuoteCache() {
+    const data = localStorage.getItem('quoteCache');
+    return data ? JSON.parse(data) : {};
+}
+
+function saveQuoteCache(code, quote) {
+    const cache = getQuoteCache();
+    cache[code] = { ...quote, timestamp: Date.now() };
+    localStorage.setItem('quoteCache', JSON.stringify(cache));
+}
+
+function getCachedQuote(code) {
+    const cache = getQuoteCache();
+    const cached = cache[code];
+    // Cache valid for 10 minutes
+    if (cached && (Date.now() - cached.timestamp) < 600000) {
+        return cached;
+    }
+    return null;
+}
+
+function renderQuoteHtml(data) {
+    if (!data || data.error || !data.price) {
+        return '<span class="quote-na">--</span>';
+    }
+    const pctClass = data.change_pct >= 0 ? 'up' : 'down';
+    const prefix = data.change_pct >= 0 ? '+' : '';
+    return `
+        <span class="quote-price ${pctClass}">${data.price.toFixed(2)}</span>
+        <span class="quote-pct ${pctClass}">${prefix}${data.change_pct.toFixed(2)}%</span>
+    `;
+}
+
 function renderWatchlist() {
     const list = getWatchlist();
     const container = document.getElementById('watchlist');
@@ -80,20 +114,24 @@ function renderWatchlist() {
     }
 
     emptyMsg.style.display = 'none';
-    container.innerHTML = list.map(s => `
-        <div class="stock-link-wrap" id="stock-${s.code}">
-            <a href="/stock/${s.code}" class="stock-link">
-                <span class="code">${s.code}</span>
-                <span class="name">${s.name}</span>
-                <div class="stock-quote" id="quote-${s.code}">
-                    <span class="quote-loading">--</span>
-                </div>
-            </a>
-            <button class="btn-remove" onclick="removeFromWatchlist('${s.code}')" title="移除">&times;</button>
-        </div>
-    `).join('');
 
-    // Load quotes for all stocks
+    // Render with cached quotes immediately
+    container.innerHTML = list.map(s => {
+        const cached = getCachedQuote(s.code);
+        const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
+        return `
+            <div class="stock-link-wrap" id="stock-${s.code}">
+                <a href="/stock/${s.code}" class="stock-link">
+                    <span class="code">${s.code}</span>
+                    <span class="name">${s.name}</span>
+                    <div class="stock-quote" id="quote-${s.code}">${quoteHtml}</div>
+                </a>
+                <button class="btn-remove" onclick="removeFromWatchlist('${s.code}')" title="移除">&times;</button>
+            </div>
+        `;
+    }).join('');
+
+    // Refresh quotes in background
     loadWatchlistQuotes(list);
 }
 
@@ -102,20 +140,11 @@ function loadWatchlistQuotes(list) {
         fetch('/api/stock/' + s.code + '/quote')
             .then(r => r.json())
             .then(data => {
-                const el = document.getElementById('quote-' + s.code);
-                if (!el) return;
-
-                if (data.error || !data.price) {
-                    el.innerHTML = '<span class="quote-na">--</span>';
-                    return;
+                if (!data.error && data.price) {
+                    saveQuoteCache(s.code, data);
                 }
-
-                const pctClass = data.change_pct >= 0 ? 'up' : 'down';
-                const prefix = data.change_pct >= 0 ? '+' : '';
-                el.innerHTML = `
-                    <span class="quote-price ${pctClass}">${data.price.toFixed(2)}</span>
-                    <span class="quote-pct ${pctClass}">${prefix}${data.change_pct.toFixed(2)}%</span>
-                `;
+                const el = document.getElementById('quote-' + s.code);
+                if (el) el.innerHTML = renderQuoteHtml(data);
             })
             .catch(() => {
                 const el = document.getElementById('quote-' + s.code);
@@ -140,6 +169,9 @@ function addStockElement(code, name, prepend = false) {
     const emptyMsg = document.getElementById('empty-msg');
     emptyMsg.style.display = 'none';
 
+    const cached = getCachedQuote(code);
+    const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
+
     const div = document.createElement('div');
     div.className = 'stock-link-wrap';
     div.id = 'stock-' + code;
@@ -147,9 +179,7 @@ function addStockElement(code, name, prepend = false) {
         <a href="/stock/${code}" class="stock-link">
             <span class="code">${code}</span>
             <span class="name">${name}</span>
-            <div class="stock-quote" id="quote-${code}">
-                <span class="quote-loading">--</span>
-            </div>
+            <div class="stock-quote" id="quote-${code}">${quoteHtml}</div>
         </a>
         <button class="btn-remove" onclick="removeFromWatchlist('${code}')" title="移除">&times;</button>
     `;
@@ -160,7 +190,7 @@ function addStockElement(code, name, prepend = false) {
         container.appendChild(div);
     }
 
-    // Load quote for just this stock
+    // Load fresh quote
     loadSingleQuote(code);
 }
 
@@ -168,20 +198,11 @@ function loadSingleQuote(code) {
     fetch('/api/stock/' + code + '/quote')
         .then(r => r.json())
         .then(data => {
-            const el = document.getElementById('quote-' + code);
-            if (!el) return;
-
-            if (data.error || !data.price) {
-                el.innerHTML = '<span class="quote-na">--</span>';
-                return;
+            if (!data.error && data.price) {
+                saveQuoteCache(code, data);
             }
-
-            const pctClass = data.change_pct >= 0 ? 'up' : 'down';
-            const prefix = data.change_pct >= 0 ? '+' : '';
-            el.innerHTML = `
-                <span class="quote-price ${pctClass}">${data.price.toFixed(2)}</span>
-                <span class="quote-pct ${pctClass}">${prefix}${data.change_pct.toFixed(2)}%</span>
-            `;
+            const el = document.getElementById('quote-' + code);
+            if (el) el.innerHTML = renderQuoteHtml(data);
         })
         .catch(() => {
             const el = document.getElementById('quote-' + code);
