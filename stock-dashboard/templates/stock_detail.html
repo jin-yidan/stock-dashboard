@@ -55,11 +55,11 @@
         <div class="col-lg-8">
             <div class="ml-box">
                 <div class="ml-header">
-                    <span class="ml-title">AI预测</span>
-                    <button class="btn-add" onclick="trainModel()">训练模型</button>
+                    <span class="ml-title">AI预测 (5日)</span>
+                    <span class="ml-model-info text-secondary small">集成学习模型</span>
                 </div>
                 <div id="ml-content">
-                    <p class="text-secondary small">点击"训练模型"开始AI分析</p>
+                    <p class="text-secondary small">正在分析...</p>
                 </div>
             </div>
         </div>
@@ -233,11 +233,8 @@ function loadSignalData() {
                 document.getElementById('risk-section').style.display = 'block';
             }
 
-            // Show ML section
-            document.getElementById('ml-section').style.display = 'block';
-            if (data.ml_prediction) {
-                showMLPrediction(data.ml_prediction);
-            }
+            // Load ML prediction automatically
+            loadMLPrediction();
 
             // Show fundamental data
             if (data.fundamental && data.fundamental.has_data) {
@@ -250,58 +247,54 @@ function loadSignalData() {
         });
 }
 
-// Show ML prediction
+// Show ML prediction - simplified to only show rise/fall
 function showMLPrediction(ml) {
     const predClass = ml.prediction === 'bullish' ? 'up' : 'down';
-    const predText = ml.prediction === 'bullish' ? '看涨' : '看跌';
+    const predText = ml.prediction === 'bullish' ? '📈 看涨' : '📉 看跌';
+    const confidence = ml.confidence;
+    const confidenceText = confidence >= 70 ? '较高' : (confidence >= 55 ? '中等' : '较低');
+
     document.getElementById('ml-content').innerHTML = `
         <div class="ml-prediction">
-            <span class="ml-label">预测方向</span>
             <span class="ml-value ${predClass}">${predText}</span>
-            <span class="ml-confidence">置信度 ${ml.confidence}%</span>
-        </div>
-        <div class="ml-probs">
-            <span class="up">上涨概率 ${ml.prob_up}%</span>
-            <span class="down">下跌概率 ${ml.prob_down}%</span>
+            <span class="ml-confidence">${confidenceText}置信 (${confidence}%)</span>
         </div>
     `;
 }
 
-// Train ML model
-function trainModel() {
-    document.getElementById('ml-content').innerHTML = '<p class="text-secondary">训练中...</p>';
+// Load ML prediction (auto train if needed)
+function loadMLPrediction() {
+    document.getElementById('ml-section').style.display = 'block';
+    document.getElementById('ml-content').innerHTML = '<p class="text-secondary small">正在分析...</p>';
 
-    fetch('/api/stock/' + stockCode + '/ml/train')
+    // First try to predict with existing model
+    fetch('/api/stock/' + stockCode + '/ml/predict')
         .then(r => r.json())
         .then(data => {
             if (data.error) {
-                document.getElementById('ml-content').innerHTML = `<p class="text-secondary">${data.error}</p>`;
-                return;
+                // No model, need to train first
+                document.getElementById('ml-content').innerHTML = '<p class="text-secondary small">训练模型中...</p>';
+                return fetch('/api/stock/' + stockCode + '/ml/train')
+                    .then(r => r.json())
+                    .then(trainData => {
+                        if (trainData.error) {
+                            document.getElementById('ml-content').innerHTML =
+                                '<p class="text-secondary small">数据不足，无法预测</p>';
+                            return null;
+                        }
+                        // Now predict
+                        return fetch('/api/stock/' + stockCode + '/ml/predict').then(r => r.json());
+                    });
             }
-
-            // Show training result and then predict
-            document.getElementById('ml-content').innerHTML = `
-                <div class="ml-train-result">
-                    <p>模型训练完成</p>
-                    <p class="small text-secondary">
-                        交叉验证准确率: ${data.accuracy}% (±${data.accuracy_std}%)<br>
-                        训练样本: ${data.samples}个<br>
-                        重要特征: ${data.top_features.map(f => f.name).slice(0, 3).join(', ')}
-                    </p>
-                </div>
-            `;
-
-            // Now predict
-            fetch('/api/stock/' + stockCode + '/ml/predict')
-                .then(r => r.json())
-                .then(pred => {
-                    if (!pred.error) {
-                        showMLPrediction(pred);
-                    }
-                });
+            return data;
+        })
+        .then(pred => {
+            if (pred && !pred.error) {
+                showMLPrediction(pred);
+            }
         })
         .catch(err => {
-            document.getElementById('ml-content').innerHTML = '<p class="text-secondary">训练失败</p>';
+            document.getElementById('ml-content').innerHTML = '<p class="text-secondary small">预测失败</p>';
         });
 }
 

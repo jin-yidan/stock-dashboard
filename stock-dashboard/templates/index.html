@@ -1,29 +1,44 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-5">
-    <div class="row">
-        <div class="col-lg-6">
-            <h1 class="mb-4">输入股票代码</h1>
-            <form onsubmit="return go()" class="mb-3">
-                <input type="text" id="code" class="stock-input" placeholder="" maxlength="6" autofocus>
-                <button type="submit" class="btn-go">分析</button>
-            </form>
-            <div id="search-results" class="search-dropdown"></div>
-            <p class="text-secondary mt-4">基于均线、MACD、RSI、成交量、资金流向的综合分析</p>
-        </div>
+<!-- Hero Section -->
+<div class="hero-section">
+    <div class="container">
+        <h1 class="hero-title">股票分析</h1>
+        <p class="hero-subtitle">基于技术指标的综合分析系统</p>
+        <form onsubmit="return go()" class="search-form">
+            <div class="search-box">
+                <input type="text" id="code" class="search-input" placeholder="输入6位股票代码" maxlength="6" autofocus>
+                <button type="submit" class="search-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                </button>
+            </div>
+        </form>
+        <p class="hero-hint">支持 MA · MACD · RSI · KDJ · 资金流向 分析</p>
     </div>
+</div>
 
-    <div class="mt-5 pt-5 border-top">
-        <div class="d-flex align-items-center mb-3">
-            <p class="text-secondary small mb-0 me-3">自选</p>
-            <button id="add-stock-btn" class="btn-add" onclick="showAddModal()">+ 添加</button>
-        </div>
-        <div id="watchlist" class="stock-grid">
-            <!-- Populated by JS -->
-        </div>
-        <p id="empty-msg" class="text-secondary small" style="display:none;">点击上方"添加"按钮添加股票</p>
+<!-- Watchlist Section -->
+<div class="container py-4">
+    <div class="section-header">
+        <h2 class="section-title">自选股</h2>
+        <button class="btn-add-stock" onclick="showAddModal()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            添加
+        </button>
     </div>
+    <div id="watchlist" class="watchlist-grid">
+        <!-- Populated by JS -->
+    </div>
+    <p id="empty-msg" class="empty-message" style="display:none;">
+        <span class="empty-icon">📊</span>
+        <span>还没有自选股</span>
+        <button class="btn-add-empty" onclick="showAddModal()">添加股票</button>
+    </p>
 </div>
 
 <!-- Add Stock Modal -->
@@ -120,13 +135,15 @@ function renderWatchlist() {
         const cached = getCachedQuote(s.code);
         const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
         return `
-            <div class="stock-link-wrap" id="stock-${s.code}">
-                <a href="/stock/${s.code}" class="stock-link">
-                    <span class="code">${s.code}</span>
-                    <span class="name">${s.name}</span>
-                    <div class="stock-quote" id="quote-${s.code}">${quoteHtml}</div>
+            <div class="watchlist-card" id="stock-${s.code}">
+                <a href="/stock/${s.code}" class="card-link">
+                    <div class="card-header">
+                        <span class="card-name">${s.name}</span>
+                        <span class="card-code">${s.code}</span>
+                    </div>
+                    <div class="card-quote" id="quote-${s.code}">${quoteHtml}</div>
                 </a>
-                <button class="btn-remove" onclick="removeFromWatchlist('${s.code}')" title="移除">&times;</button>
+                <button class="card-remove" onclick="event.preventDefault();removeFromWatchlist('${s.code}')" title="移除">×</button>
             </div>
         `;
     }).join('');
@@ -173,15 +190,17 @@ function addStockElement(code, name, prepend = false) {
     const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
 
     const div = document.createElement('div');
-    div.className = 'stock-link-wrap';
+    div.className = 'watchlist-card';
     div.id = 'stock-' + code;
     div.innerHTML = `
-        <a href="/stock/${code}" class="stock-link">
-            <span class="code">${code}</span>
-            <span class="name">${name}</span>
-            <div class="stock-quote" id="quote-${code}">${quoteHtml}</div>
+        <a href="/stock/${code}" class="card-link">
+            <div class="card-header">
+                <span class="card-name">${name}</span>
+                <span class="card-code">${code}</span>
+            </div>
+            <div class="card-quote" id="quote-${code}">${quoteHtml}</div>
         </a>
-        <button class="btn-remove" onclick="removeFromWatchlist('${code}')" title="移除">&times;</button>
+        <button class="card-remove" onclick="event.preventDefault();removeFromWatchlist('${code}')" title="移除">×</button>
     `;
 
     if (prepend && container.firstChild) {
