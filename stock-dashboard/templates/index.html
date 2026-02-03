@@ -6,7 +6,7 @@
         <div class="col-lg-6">
             <h1 class="mb-4">输入股票代码</h1>
             <form onsubmit="return go()" class="mb-3">
-                <input type="text" id="code" class="stock-input" placeholder="代码" maxlength="6" autofocus>
+                <input type="text" id="code" class="stock-input" placeholder="" maxlength="6" autofocus>
                 <button type="submit" class="btn-go">分析</button>
             </form>
             <div id="search-results" class="search-dropdown"></div>
@@ -129,15 +129,76 @@ function addToWatchlist(code, name) {
     if (!list.find(s => s.code === code)) {
         list.unshift({ code, name });
         saveWatchlist(list);
-        renderWatchlist();
+        // Only add the new stock element instead of re-rendering everything
+        addStockElement(code, name, true);
     }
     hideAddModal();
+}
+
+function addStockElement(code, name, prepend = false) {
+    const container = document.getElementById('watchlist');
+    const emptyMsg = document.getElementById('empty-msg');
+    emptyMsg.style.display = 'none';
+
+    const div = document.createElement('div');
+    div.className = 'stock-link-wrap';
+    div.id = 'stock-' + code;
+    div.innerHTML = `
+        <a href="/stock/${code}" class="stock-link">
+            <span class="code">${code}</span>
+            <span class="name">${name}</span>
+            <div class="stock-quote" id="quote-${code}">
+                <span class="quote-loading">--</span>
+            </div>
+        </a>
+        <button class="btn-remove" onclick="removeFromWatchlist('${code}')" title="移除">&times;</button>
+    `;
+
+    if (prepend && container.firstChild) {
+        container.insertBefore(div, container.firstChild);
+    } else {
+        container.appendChild(div);
+    }
+
+    // Load quote for just this stock
+    loadSingleQuote(code);
+}
+
+function loadSingleQuote(code) {
+    fetch('/api/stock/' + code + '/quote')
+        .then(r => r.json())
+        .then(data => {
+            const el = document.getElementById('quote-' + code);
+            if (!el) return;
+
+            if (data.error || !data.price) {
+                el.innerHTML = '<span class="quote-na">--</span>';
+                return;
+            }
+
+            const pctClass = data.change_pct >= 0 ? 'up' : 'down';
+            const prefix = data.change_pct >= 0 ? '+' : '';
+            el.innerHTML = `
+                <span class="quote-price ${pctClass}">${data.price.toFixed(2)}</span>
+                <span class="quote-pct ${pctClass}">${prefix}${data.change_pct.toFixed(2)}%</span>
+            `;
+        })
+        .catch(() => {
+            const el = document.getElementById('quote-' + code);
+            if (el) el.innerHTML = '<span class="quote-na">--</span>';
+        });
 }
 
 function removeFromWatchlist(code) {
     const list = getWatchlist().filter(s => s.code !== code);
     saveWatchlist(list);
-    renderWatchlist();
+    // Only remove the specific element instead of re-rendering
+    const el = document.getElementById('stock-' + code);
+    if (el) el.remove();
+    // Show empty message if no stocks left
+    if (list.length === 0) {
+        document.getElementById('empty-msg').style.display = 'block';
+    }
 }
 
 // Modal functions

@@ -81,6 +81,11 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
 
 def get_realtime_quote(stock_code):
     """Get realtime quote for a stock."""
+    cache_key = f"quote_{stock_code}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     try:
         df = adata.stock.market.list_market_current(code_list=[stock_code])
         if df is not None and not df.empty:
@@ -93,7 +98,7 @@ def get_realtime_quote(stock_code):
             if not kline.empty:
                 latest = kline.iloc[-1]
                 prev = kline.iloc[-2] if len(kline) > 1 else latest
-                return {
+                result = {
                     'stock_code': stock_code,
                     'price': price if price > 0 else float(latest.get('close', 0)),
                     'change_pct': change_pct,
@@ -104,8 +109,10 @@ def get_realtime_quote(stock_code):
                     'amount': float(row.get('amount', 0) or latest.get('amount', 0) or 0),
                     'pre_close': float(prev.get('close', 0))
                 }
+                _set_cached(cache_key, result)
+                return result
 
-            return {
+            result = {
                 'stock_code': stock_code,
                 'price': price,
                 'change_pct': change_pct,
@@ -116,6 +123,8 @@ def get_realtime_quote(stock_code):
                 'amount': float(row.get('amount', 0) or 0),
                 'pre_close': 0
             }
+            _set_cached(cache_key, result)
+            return result
 
     except Exception as e:
         print(f"Error fetching realtime quote for {stock_code}: {e}")
@@ -125,6 +134,7 @@ def get_realtime_quote(stock_code):
 
 def _get_quote_from_kline(stock_code):
     """Fallback: get quote from latest kline data."""
+    cache_key = f"quote_{stock_code}"
     try:
         df = get_stock_kline(stock_code, days=10)
         if df.empty:
@@ -133,7 +143,7 @@ def _get_quote_from_kline(stock_code):
         row = df.iloc[-1]
         prev_row = df.iloc[-2] if len(df) > 1 else row
 
-        return {
+        result = {
             'stock_code': stock_code,
             'price': float(row.get('close', 0)),
             'change_pct': float(row.get('change_pct', 0)),
@@ -144,6 +154,8 @@ def _get_quote_from_kline(stock_code):
             'amount': float(row.get('amount', 0)),
             'pre_close': float(prev_row.get('close', 0))
         }
+        _set_cached(cache_key, result)
+        return result
     except Exception as e:
         print(f"Error getting quote from kline for {stock_code}: {e}")
         return None
@@ -221,10 +233,17 @@ def get_hot_stocks_fast(limit=12):
 
 def get_stock_name(stock_code):
     """Get stock name by code."""
+    cache_key = f"name_{stock_code}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     # First check database
     info = db_service.get_stock_info(stock_code)
     if info:
-        return info.get('short_name', '')
+        name = info.get('short_name', '')
+        _set_cached(cache_key, name)
+        return name
 
     # Check current market data
     try:
@@ -233,6 +252,7 @@ def get_stock_name(stock_code):
             name = df.iloc[0].get('short_name', '')
             if name:
                 db_service.save_stock_info(stock_code, name, '')
+                _set_cached(cache_key, name)
                 return name
     except Exception as e:
         print(f"Error from list_market_current: {e}")
@@ -245,10 +265,12 @@ def get_stock_name(stock_code):
             name = match.iloc[0].get('short_name', '')
             exchange = match.iloc[0].get('exchange', '')
             db_service.save_stock_info(stock_code, name, exchange)
+            _set_cached(cache_key, name)
             return name
     except Exception as e:
         print(f"Error getting stock name from all_code: {e}")
 
+    _set_cached(cache_key, stock_code)
     return stock_code
 
 def search_stocks(query, limit=10):
