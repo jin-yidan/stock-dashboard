@@ -213,13 +213,27 @@ def api_kline(code):
         date_str = str(row.get('trade_date', ''))[:10]
         dates.append(date_str)
 
-        # K-line: [open, close, low, high]
-        kline_data.append([
-            safe_round(row['open']),
-            safe_round(row['close']),
-            safe_round(row['low']),
-            safe_round(row['high'])
-        ])
+        # Use change_pct to determine color (based on daily change vs previous close)
+        change_pct = row.get('change_pct', 0)
+        if change_pct is None or (isinstance(change_pct, float) and math.isnan(change_pct)):
+            change_pct = 0
+        is_up = change_pct >= 0
+
+        # K-line with color based on daily change_pct (not close vs open)
+        kline_data.append({
+            'value': [
+                safe_round(row['open']),
+                safe_round(row['close']),
+                safe_round(row['low']),
+                safe_round(row['high'])
+            ],
+            'itemStyle': {
+                'color': '#ef5350' if is_up else '#26a69a',
+                'color0': '#ef5350' if is_up else '#26a69a',
+                'borderColor': '#ef5350' if is_up else '#26a69a',
+                'borderColor0': '#ef5350' if is_up else '#26a69a'
+            }
+        })
 
         # MAs - handle NaN values
         ma5_val = row.get('ma5')
@@ -229,8 +243,7 @@ def api_kline(code):
         ma10_data.append(safe_round(ma10_val))
         ma20_data.append(safe_round(ma20_val))
 
-        # Volume with color
-        is_up = row['close'] >= row['open']
+        # Volume with color based on daily change_pct
         vol = row.get('volume', 0)
         vol = int(vol) if vol and not math.isnan(vol) else 0
         volume_data.append({
@@ -326,78 +339,6 @@ def api_czsc_signals(code):
 
 
 # ============== NEW FEATURES ==============
-
-# Feature 1: Stock Comparison Page
-@app.route('/compare/<code1>/<code2>')
-def compare_stocks(code1, code2):
-    """Compare two stocks side by side."""
-    name1 = data_service.get_stock_name(code1)
-    name2 = data_service.get_stock_name(code2)
-    return render_template(
-        'compare.html',
-        stock1={'code': code1, 'name': name1},
-        stock2={'code': code2, 'name': name2}
-    )
-
-
-@app.route('/api/compare/<code1>/<code2>')
-def api_compare(code1, code2):
-    """API for comparison data."""
-    from concurrent.futures import ThreadPoolExecutor
-
-    def get_stock_data(code):
-        df = data_service.get_stock_kline(code, days=250)
-        if df.empty:
-            return None
-        df = indicator_service.calculate_all(df)
-        quote = data_service.get_realtime_quote(code)
-
-        # Calculate 52-week high/low
-        high_52w = df['high'].max()
-        low_52w = df['low'].min()
-        current = quote.get('price', df.iloc[-1]['close']) if quote else df.iloc[-1]['close']
-
-        # Performance metrics
-        if len(df) >= 5:
-            ret_5d = (df.iloc[-1]['close'] / df.iloc[-5]['close'] - 1) * 100
-        else:
-            ret_5d = 0
-        if len(df) >= 20:
-            ret_20d = (df.iloc[-1]['close'] / df.iloc[-20]['close'] - 1) * 100
-        else:
-            ret_20d = 0
-        if len(df) >= 60:
-            ret_60d = (df.iloc[-1]['close'] / df.iloc[-60]['close'] - 1) * 100
-        else:
-            ret_60d = 0
-
-        return {
-            'code': code,
-            'name': data_service.get_stock_name(code),
-            'price': current,
-            'change_pct': quote.get('change_pct', 0) if quote else 0,
-            'high_52w': round(high_52w, 2),
-            'low_52w': round(low_52w, 2),
-            'pct_from_high': round((current / high_52w - 1) * 100, 1),
-            'pct_from_low': round((current / low_52w - 1) * 100, 1),
-            'ret_5d': round(ret_5d, 2),
-            'ret_20d': round(ret_20d, 2),
-            'ret_60d': round(ret_60d, 2),
-            'volume': quote.get('volume', 0) if quote else 0,
-            'rsi': round(df.iloc[-1].get('rsi', 50), 1) if 'rsi' in df.columns else 50,
-        }
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        future1 = executor.submit(get_stock_data, code1)
-        future2 = executor.submit(get_stock_data, code2)
-        data1 = future1.result(timeout=15)
-        data2 = future2.result(timeout=15)
-
-    if not data1 or not data2:
-        return jsonify({'error': 'Failed to fetch data'})
-
-    return jsonify({'stock1': data1, 'stock2': data2})
-
 
 # Market Analysis APIs
 @app.route('/api/market/regime')
@@ -615,59 +556,6 @@ def api_new_indicators(code):
     })
 
 
-# Feature 2: Sector Heat Map
-@app.route('/heatmap')
-def sector_heatmap():
-    """Sector heat map page."""
-    return render_template('heatmap.html')
-
-
-@app.route('/api/heatmap')
-def api_heatmap():
-    """API for sector heat map data."""
-    # Representative stocks for each sector
-    sectors = {
-        '白酒': ['600519', '000858', '000568'],
-        '银行': ['601398', '600036', '000001'],
-        '新能源': ['300750', '002594', '600438'],
-        '医药': ['600276', '000538', '300760'],
-        '科技': ['002415', '000725', '603986'],
-        '地产': ['000002', '001979', '600048'],
-        '消费': ['000333', '000651', '600887'],
-        '证券': ['600030', '601688', '000776'],
-    }
-
-    result = []
-    for sector_name, codes in sectors.items():
-        sector_data = {'name': sector_name, 'stocks': [], 'avg_change': 0}
-        total_change = 0
-        count = 0
-
-        for code in codes:
-            try:
-                quote = data_service.get_realtime_quote(code)
-                if quote and 'price' in quote:
-                    stock_name = data_service.get_stock_name(code)
-                    change = quote.get('change_pct', 0)
-                    sector_data['stocks'].append({
-                        'code': code,
-                        'name': stock_name,
-                        'price': quote['price'],
-                        'change_pct': change
-                    })
-                    total_change += change
-                    count += 1
-            except Exception:
-                pass
-
-        if count > 0:
-            sector_data['avg_change'] = round(total_change / count, 2)
-        result.append(sector_data)
-
-    # Sort by average change
-    result.sort(key=lambda x: x['avg_change'], reverse=True)
-    return jsonify(result)
-
 
 # Feature 3: 52-week High/Low API
 @app.route('/api/stock/<code>/52week')
@@ -697,11 +585,241 @@ def api_52week(code):
     })
 
 
+# AI Analysis with Web Search
+@app.route('/api/stock/<code>/ai-analysis', methods=['POST'])
+def api_ai_analysis(code):
+    """
+    Generate AI-powered analysis using user's OpenAI API key.
+
+    Combines:
+    - Our technical analysis data (indicators, CYQ, strategies)
+    - GPT web search for recent news and policy
+    - Comprehensive investment advice
+
+    Request body:
+    {
+        "api_key": "sk-xxx..."  // User's OpenAI API key
+    }
+    """
+    from services import ai_service, cyq_service, strategy_service
+
+    # Get API key from request
+    data = request.get_json()
+    if not data or not data.get('api_key'):
+        return jsonify({'success': False, 'error': '请提供 API Key'})
+
+    api_key = data['api_key']
+
+    # Get stock name
+    stock_name = data_service.get_stock_name(code)
+    if not stock_name:
+        stock_name = code
+
+    # Gather all our existing data
+    try:
+        # 1. Main signal data (includes all indicators)
+        signal_data = signal_service.generate_signal(code)
+
+        # 2. CYQ chip distribution
+        df = data_service.get_stock_kline(code, days=300)
+        cyq_data = cyq_service.get_cyq_analysis(df) if not df.empty else None
+
+        # 3. Trading strategies
+        strategies_data = strategy_service.run_all_strategies(df) if not df.empty else {'triggered': []}
+
+        # 4. 52-week data
+        df_52w = data_service.get_stock_kline(code, days=250)
+        week52_data = None
+        if not df_52w.empty:
+            quote = data_service.get_realtime_quote(code)
+            current = quote.get('price', df_52w.iloc[-1]['close']) if quote else df_52w.iloc[-1]['close']
+            high_52w = df_52w['high'].max()
+            low_52w = df_52w['low'].min()
+            week52_data = {
+                'current': round(current, 2),
+                'high_52w': round(high_52w, 2),
+                'low_52w': round(low_52w, 2),
+                'pct_from_high': round((current / high_52w - 1) * 100, 1),
+                'pct_from_low': round((current / low_52w - 1) * 100, 1),
+                'position': round((current - low_52w) / (high_52w - low_52w) * 100, 1) if high_52w != low_52w else 50
+            }
+
+        # Generate AI analysis
+        result = ai_service.generate_ai_analysis(
+            api_key=api_key,
+            stock_code=code,
+            stock_name=stock_name,
+            signal_data=signal_data,
+            cyq_data=cyq_data,
+            strategies_data=strategies_data,
+            week52_data=week52_data
+        )
+
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'分析过程出错: {str(e)}'})
+
+
 # Feature 4: Price Alerts
 @app.route('/alerts')
 def alerts_page():
     """Price alerts management page."""
     return render_template('alerts.html')
+
+
+# =============================================================================
+# NEW FEATURES: Market Status, Cache, Patterns, Sector Rotation, Correlation
+# =============================================================================
+
+@app.route('/api/market/status')
+def api_market_status():
+    """Get current market status (trading hours, holidays)."""
+    from services import market_status_service
+    return jsonify(market_status_service.get_market_status())
+
+
+@app.route('/api/cache/stats')
+def api_cache_stats():
+    """Get cache statistics."""
+    from services.cache_service import cache
+    return jsonify(cache.get_stats())
+
+
+@app.route('/api/stock/<code>/patterns')
+def api_candlestick_patterns(code):
+    """Get candlestick pattern analysis for a stock."""
+    df = data_service.get_stock_kline(code, days=60)
+    if df.empty:
+        return jsonify({'error': 'No data'})
+    df = indicator_service.detect_candlestick_patterns(df)
+    result = indicator_service.get_candlestick_patterns(df)
+    result['stock_code'] = code
+    return jsonify(result)
+
+
+@app.route('/api/stock/<code>/data-freshness')
+def api_data_freshness(code):
+    """Get data freshness information for a stock."""
+    from services import market_status_service
+    df = data_service.get_stock_kline(code, days=5)
+    if df.empty:
+        return jsonify({'fresh': False, 'status': 'no_data', 'status_cn': '无数据'})
+    latest_date = df.iloc[-1]['trade_date']
+    freshness = market_status_service.get_data_freshness(latest_date)
+    freshness['last_data_date'] = str(latest_date)[:10]
+    freshness['last_trading_date'] = market_status_service.get_last_trading_date()
+    return jsonify(freshness)
+
+
+@app.route('/api/sector/rotation')
+def api_sector_rotation():
+    """Get sector rotation analysis - which sectors are gaining/losing momentum."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    sector_representatives = {
+        '白酒': ['600519', '000858'],
+        '银行': ['601398', '600036'],
+        '新能源': ['300750', '002594'],
+        '医药': ['600276', '000538'],
+        '科技': ['002415', '300059'],
+        '地产': ['000002', '001979'],
+        '消费': ['000651', '000333'],
+        '证券': ['600030', '601688'],
+    }
+
+    def get_sector_performance(sector, codes):
+        total_change = 0
+        count = 0
+        for code in codes:
+            try:
+                df = data_service.get_stock_kline(code, days=30)
+                if not df.empty and len(df) >= 20:
+                    ret_20d = (df.iloc[-1]['close'] / df.iloc[-20]['close'] - 1) * 100
+                    total_change += ret_20d
+                    count += 1
+            except Exception:
+                pass
+        return {'sector': sector, 'change_20d': round(total_change / count, 2) if count > 0 else 0}
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(get_sector_performance, s, c): s for s, c in sector_representatives.items()}
+        results = []
+        for future in futures:
+            try:
+                results.append(future.result(timeout=15))
+            except Exception:
+                pass
+
+    results.sort(key=lambda x: x['change_20d'], reverse=True)
+    return jsonify({'sectors': results, 'leaders': results[:3], 'laggards': results[-3:]})
+
+
+@app.route('/api/watchlist/correlation')
+def api_watchlist_correlation():
+    """Calculate correlation matrix for watchlist stocks."""
+    import numpy as np
+    from concurrent.futures import ThreadPoolExecutor
+
+    codes_param = request.args.get('codes', '')
+    if not codes_param:
+        return jsonify({'error': 'Provide codes via ?codes=600519,000858,...'})
+
+    codes = [c.strip() for c in codes_param.split(',') if c.strip()][:10]
+    if len(codes) < 2:
+        return jsonify({'error': 'Need at least 2 stocks'})
+
+    def get_returns(code):
+        df = data_service.get_stock_kline(code, days=120)
+        if df.empty or len(df) < 60:
+            return None
+        returns = df['close'].pct_change().dropna().values
+        return {'code': code, 'name': data_service.get_stock_name(code), 'returns': returns}
+
+    with ThreadPoolExecutor(max_workers=len(codes)) as executor:
+        futures = {executor.submit(get_returns, code): code for code in codes}
+        stock_data = {}
+        for future in futures:
+            try:
+                result = future.result(timeout=10)
+                if result:
+                    stock_data[futures[future]] = result
+            except Exception:
+                pass
+
+    if len(stock_data) < 2:
+        return jsonify({'error': 'Not enough data'})
+
+    valid_codes = list(stock_data.keys())
+    min_len = min(len(stock_data[c]['returns']) for c in valid_codes)
+    returns_matrix = np.array([stock_data[c]['returns'][-min_len:] for c in valid_codes])
+    corr_matrix = np.corrcoef(returns_matrix)
+
+    matrix = [[round(corr_matrix[i, j], 3) for j in range(len(valid_codes))] for i in range(len(valid_codes))]
+    stocks_info = [{'code': c, 'name': stock_data[c]['name']} for c in valid_codes]
+
+    high_corr = []
+    for i in range(len(valid_codes)):
+        for j in range(i + 1, len(valid_codes)):
+            if abs(corr_matrix[i, j]) > 0.7:
+                high_corr.append({'stock1': stocks_info[i], 'stock2': stocks_info[j], 'correlation': round(corr_matrix[i, j], 3)})
+
+    return jsonify({'stocks': stocks_info, 'matrix': matrix, 'high_correlations': high_corr, 'period_days': min_len})
+
+
+@app.route('/api/stock/<code>/historical-accuracy')
+def api_historical_accuracy(code):
+    """Get historical signal accuracy for a stock."""
+    result = signal_service.backtest_signal(code, lookback_days=120)
+    if result.get('error'):
+        return jsonify(result)
+    return jsonify({
+        'stock_code': code,
+        'accuracy': result.get('accuracy', 0),
+        'total_signals': result.get('total_signals', 0),
+        'period': result.get('period', ''),
+        'reliability': 'high' if result.get('accuracy', 0) > 55 else ('moderate' if result.get('accuracy', 0) > 45 else 'low')
+    })
 
 
 if __name__ == '__main__':

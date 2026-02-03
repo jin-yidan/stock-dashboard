@@ -2,25 +2,31 @@
 
 {% block title %}{{ stock_name }} {{ stock_code }}{% endblock %}
 
+{% block header %}{% endblock %}
+
 {% block content %}
 <div class="container py-5">
     <!-- Header -->
-    <div class="row mb-5">
-        <div class="col">
+    <div class="stock-header">
+        <div class="header-top">
             <a href="/" class="back-link">← 返回</a>
-            <div class="d-flex align-items-center mt-3 flex-wrap gap-2">
-                <h1 class="me-3 mb-0">{{ stock_name }}</h1>
-                <span class="text-secondary me-3">{{ stock_code }}</span>
+            <div class="header-badges">
+                <span id="market-status" class="market-badge"></span>
+                <span id="data-freshness" class="freshness-badge"></span>
+            </div>
+        </div>
+        <div class="stock-header-row">
+            <div class="stock-info">
+                <h1>{{ stock_name }}</h1>
+                <span class="stock-code">{{ stock_code }}</span>
                 <button id="watchlist-btn" class="btn-watchlist" onclick="toggleWatchlist()">
                     <span id="watchlist-icon">☆</span> 自选
                 </button>
-                <button class="export-btn" onclick="showCompareModal()">对比</button>
-                <button class="export-btn" onclick="exportToImage()">📷 导出图片</button>
             </div>
-        </div>
-        <div class="col-auto text-end" id="price-section">
-            <div class="skeleton skeleton-text xl"></div>
-            <div class="skeleton skeleton-text" style="margin-top:4px;"></div>
+            <div class="stock-price" id="price-section">
+                <div class="skeleton skeleton-text xl"></div>
+                <div class="skeleton skeleton-text" style="margin-top:4px;"></div>
+            </div>
         </div>
     </div>
 
@@ -28,15 +34,64 @@
     <div class="row mb-4">
         <div class="col-12">
             <div id="signal-box" class="signal-box loading">
-                <div class="signal-label">综合评估</div>
+                <div class="signal-header-row">
+                    <div class="signal-label">综合评估</div>
+                    <div class="ai-section-inline">
+                        <button class="ai-btn" onclick="generateAiAnalysis()" id="ai-generate-btn">AI 分析</button>
+                        <a href="javascript:void(0)" onclick="showApiKeyModal()" class="ai-key-link">设置 Key</a>
+                        <span id="ai-status" class="ai-status"></span>
+                    </div>
+                </div>
                 <div id="signal-value" class="signal-value">
                     <span class="loading-spinner"></span>分析中
                 </div>
                 <div id="signal-score" class="signal-score">--</div>
+                <p id="signal-summary" class="signal-summary-text">
+                    <span class="skeleton skeleton-text wide"></span>
+                </p>
             </div>
-            <p id="signal-summary" class="mt-4 text-secondary">
-                <span class="skeleton skeleton-text wide"></span>
-            </p>
+            <!-- Education Context -->
+            <div id="education-context" class="education-context" style="display:none;">
+                <div class="edu-header">
+                    <span class="edu-title">分析解读</span>
+                    <button class="edu-toggle" onclick="toggleEducationContext()">收起</button>
+                </div>
+                <div id="edu-content">
+                    <div class="edu-grid">
+                        <div class="edu-card positive">
+                            <div class="edu-card-title">看多因素</div>
+                            <div id="edu-bullish-factors"></div>
+                        </div>
+                        <div class="edu-card negative">
+                            <div class="edu-card-title">风险因素</div>
+                            <div id="edu-bearish-factors"></div>
+                        </div>
+                    </div>
+                    <div class="edu-action" id="edu-action"></div>
+                    <div class="edu-regime" id="edu-regime"></div>
+                </div>
+            </div>
+
+            <!-- AI Analysis Result -->
+            <div id="ai-result" class="ai-result" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- API Key Modal -->
+    <div id="api-key-modal" class="modal" style="display:none;">
+        <div class="modal-content modal-sm">
+            <div class="modal-header">
+                <span class="modal-title">API Key</span>
+                <button class="modal-close" onclick="hideApiKeyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="modal-note">支持 OpenAI、Claude 等兼容 API</p>
+                <input type="text" id="api-key-input" placeholder="输入 API Key" class="api-key-input">
+                <div class="modal-actions">
+                    <button class="btn-save" onclick="saveApiKey()">保存</button>
+                    <button class="btn-clear" onclick="clearApiKey()">清除</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -71,6 +126,40 @@
         </div>
     </div>
 
+    <!-- Candlestick Patterns -->
+    <div class="row mb-4" id="patterns-section" style="display:none;">
+        <div class="col-12">
+            <div class="patterns-box">
+                <div class="patterns-header">
+                    <span>K线形态</span>
+                    <span id="patterns-signal" class="pattern-signal"></span>
+                </div>
+                <div id="patterns-content" class="patterns-content">
+                    <span class="text-secondary small">分析中...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historical Accuracy -->
+    <div class="row mb-4" id="accuracy-section" style="display:none;">
+        <div class="col-12">
+            <div class="accuracy-box">
+                <div class="accuracy-header">信号准确率</div>
+                <div class="accuracy-content">
+                    <div class="accuracy-main">
+                        <span id="accuracy-value" class="accuracy-value">--</span>
+                        <span class="accuracy-label">历史准确率</span>
+                    </div>
+                    <div class="accuracy-detail">
+                        <span id="accuracy-signals">-- 个信号</span>
+                        <span id="accuracy-period">120天回测</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- CZSC (Chan Theory) Analysis -->
     <div class="row mb-4" id="czsc-section" style="display:none;">
         <div class="col-12">
@@ -89,11 +178,6 @@
             <div class="chart-box">
                 <div class="chart-header">
                     <span class="chart-title">K线图</span>
-                    <div class="chart-btns">
-                        <button class="chart-btn active" onclick="loadKline(30)">30日</button>
-                        <button class="chart-btn" onclick="loadKline(60)">60日</button>
-                        <button class="chart-btn" onclick="loadKline(120)">120日</button>
-                    </div>
                 </div>
                 <div id="kline-chart" style="height:500px;">
                     <div style="padding:2rem;text-align:center;">
@@ -110,7 +194,7 @@
         <div class="col-12">
             <div class="ml-box">
                 <div class="ml-header">
-                    <span class="ml-title">AI预测 (5日)</span>
+                    <span class="ml-title">模型预测 (5日)</span>
                     <span class="ml-model-info text-secondary small">集成学习模型</span>
                 </div>
                 <div id="ml-content">
@@ -205,6 +289,7 @@
     <!-- Indicators -->
     <div class="row">
         <div class="col-12">
+            <div class="section-title-header">技术指标</div>
             <table class="indicator-table">
                 <thead>
                     <tr>
@@ -227,7 +312,7 @@
         <div class="col-12">
             <div class="backtest-section">
                 <div class="d-flex align-items-center mb-3">
-                    <span class="text-secondary small me-3">历史回测</span>
+                    <span class="section-title-header me-3" style="margin-bottom:0;">历史回测</span>
                     <button id="backtest-btn" class="btn-add" onclick="loadBacktest()">查看准确率</button>
                 </div>
                 <div id="backtest-result" style="display:none;"></div>
@@ -235,13 +320,6 @@
         </div>
     </div>
 
-    <!-- Price Info -->
-    <div class="row mt-5" id="price-info" style="display:none;">
-        <div class="col-12">
-            <p class="text-secondary small mb-3" id="trade-date-label"></p>
-            <div class="price-row" id="price-row"></div>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -249,8 +327,10 @@
 <script src="https://cdn.staticfile.org/echarts/5.4.3/echarts.min.js"></script>
 <script>if(typeof echarts==='undefined')document.write('<script src="https://cdn.bootcdn.net/ajax/libs/echarts/5.4.3/echarts.min.js"><\/script>')</script>
 <script>if(typeof echarts==='undefined')document.write('<script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"><\/script>')</script>
+<script src="{{ url_for('static', filename='js/new-features.js') }}"></script>
 <script>
 const stockCode = '{{ stock_code }}';
+window.stockCode = stockCode;  // Make available to new-features.js
 const stockName = '{{ stock_name }}';
 let klineChart = null;
 
@@ -314,17 +394,44 @@ function loadSignalData() {
             document.getElementById('signal-summary').innerHTML = data.simple_summary;
             document.getElementById('signal-summary').classList.add('fade-in');
 
-            // Update indicators
+            // Update indicators with education content
             const tbody = document.getElementById('indicators-body');
-            tbody.innerHTML = data.indicators.map(ind => {
+            tbody.innerHTML = data.indicators.map((ind, idx) => {
                 const signalText = ind.signal === 'bullish' ? '看涨' : (ind.signal === 'bearish' ? '看跌' : '中性');
                 const scoreClass = ind.weighted_score > 0 ? 'up' : (ind.weighted_score < 0 ? 'down' : '');
                 const scorePrefix = ind.weighted_score > 0 ? '+' : '';
+
+                // Build education content if available
+                let eduHtml = '';
+                if (ind.education) {
+                    const edu = ind.education;
+                    eduHtml = `
+                        <div class="indicator-education" id="edu-${idx}" style="display:none;">
+                            ${edu.what_it_measures ? `<div class="edu-section"><strong>指标含义：</strong>${edu.what_it_measures}</div>` : ''}
+                            ${edu.how_to_read && edu.how_to_read.length > 0 ? `
+                                <div class="edu-section"><strong>如何解读：</strong>
+                                    <ul>${edu.how_to_read.map(h => `<li>${h}</li>`).join('')}</ul>
+                                </div>
+                            ` : ''}
+                            ${edu.tips && edu.tips.length > 0 ? `
+                                <div class="edu-section"><strong>使用技巧：</strong>
+                                    <ul>${edu.tips.map(t => `<li>${t}</li>`).join('')}</ul>
+                                </div>
+                            ` : ''}
+                            ${edu.accuracy_note ? `<div class="edu-note">${edu.accuracy_note}</div>` : ''}
+                        </div>
+                    `;
+                }
+
                 return `
                     <tr>
                         <td>
-                            <div>${ind.name}</div>
+                            <div class="indicator-name-row">
+                                <span>${ind.name}</span>
+                                ${ind.education ? `<button class="learn-btn" onclick="toggleEducation(${idx})">展开</button>` : ''}
+                            </div>
                             <div class="explain">${ind.plain_explanation}</div>
+                            ${eduHtml}
                         </td>
                         <td>
                             <span class="signal-tag ${ind.signal}">${signalText}</span>
@@ -335,6 +442,11 @@ function loadSignalData() {
                     </tr>
                 `;
             }).join('');
+
+            // Show education context section if available
+            if (data.education) {
+                showEducationContext(data.education);
+            }
 
             // Update risk management section
             if (data.stop_loss && data.take_profit) {
@@ -359,7 +471,7 @@ function loadSignalData() {
 // Show ML prediction - simplified to only show rise/fall
 function showMLPrediction(ml) {
     const predClass = ml.prediction === 'bullish' ? 'up' : 'down';
-    const predText = ml.prediction === 'bullish' ? '📈 看涨' : '📉 看跌';
+    const predText = ml.prediction === 'bullish' ? '看涨' : '看跌';
     const confidence = ml.confidence;
     const confidenceText = confidence >= 70 ? '较高' : (confidence >= 55 ? '中等' : '较低');
 
@@ -448,12 +560,15 @@ function showFundamental(fund) {
     }
 
     if (fund.concepts && fund.concepts.length > 0) {
-        html += '<div class="fund-concepts">';
-        html += '<span class="fund-label">概念: </span>';
-        fund.concepts.forEach(c => {
-            html += `<span class="fund-concept">${c}</span>`;
+        // Remove duplicates
+        const uniqueConcepts = [...new Set(fund.concepts)];
+        html += '<div class="fund-concepts-section">';
+        html += '<span class="fund-concepts-label">概念板块</span>';
+        html += '<div class="fund-concepts-list">';
+        uniqueConcepts.forEach(c => {
+            html += `<span class="fund-concept-tag">${c}</span>`;
         });
-        html += '</div>';
+        html += '</div></div>';
     }
 
     document.getElementById('fundamental-content').innerHTML = html;
@@ -529,34 +644,6 @@ function loadQuoteData() {
                 <div class="price ${priceClass} fade-in">${data.price.toFixed(2)}</div>
                 <div class="change ${priceClass} fade-in">${changePrefix}${data.change_pct.toFixed(2)}%</div>
             `;
-
-            // Show price info
-            const today = new Date();
-            const dateStr = today.getFullYear() + '年' + (today.getMonth()+1) + '月' + today.getDate() + '日';
-            document.getElementById('trade-date-label').textContent = dateStr + ' 行情';
-            document.getElementById('price-row').innerHTML = `
-                <div class="price-item">
-                    <span class="label">开盘</span>
-                    <span class="value">${data.open.toFixed(2)}</span>
-                </div>
-                <div class="price-item">
-                    <span class="label">最高</span>
-                    <span class="value up">${data.high.toFixed(2)}</span>
-                </div>
-                <div class="price-item">
-                    <span class="label">最低</span>
-                    <span class="value down">${data.low.toFixed(2)}</span>
-                </div>
-                <div class="price-item">
-                    <span class="label">昨收</span>
-                    <span class="value">${data.pre_close.toFixed(2)}</span>
-                </div>
-                <div class="price-item">
-                    <span class="label">成交额</span>
-                    <span class="value">${(data.amount / 100000000).toFixed(1)}亿</span>
-                </div>
-            `;
-            document.getElementById('price-info').style.display = 'block';
         })
         .catch(err => {
             console.error('Error loading quote:', err);
@@ -823,68 +910,6 @@ function load52WeekData() {
         .catch(err => console.error('Error loading 52-week data:', err));
 }
 
-// Export to image
-function exportToImage() {
-    const btn = document.querySelector('.export-btn[onclick="exportToImage()"]');
-    btn.textContent = '生成中...';
-    btn.disabled = true;
-
-    // Use html2canvas library
-    if (typeof html2canvas === 'undefined') {
-        // Load html2canvas dynamically
-        const script = document.createElement('script');
-        script.src = 'https://cdn.staticfile.org/html2canvas/1.4.1/html2canvas.min.js';
-        script.onload = function() { captureAndDownload(btn); };
-        script.onerror = function() {
-            // Try fallback CDN
-            const script2 = document.createElement('script');
-            script2.src = 'https://cdn.bootcdn.net/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-            script2.onload = function() { captureAndDownload(btn); };
-            script2.onerror = function() {
-                btn.innerHTML = '📷 导出图片';
-                btn.disabled = false;
-                alert('加载导出组件失败，请刷新重试');
-            };
-            document.head.appendChild(script2);
-        };
-        document.head.appendChild(script);
-    } else {
-        captureAndDownload(btn);
-    }
-}
-
-function captureAndDownload(btn) {
-    const exportArea = document.querySelector('.container');
-
-    html2canvas(exportArea, {
-        backgroundColor: '#f8f9fa',
-        scale: 2,
-        logging: false,
-        useCORS: true
-    }).then(canvas => {
-        const link = document.createElement('a');
-        link.download = stockName + '_' + stockCode + '_分析.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-
-        btn.innerHTML = '📷 导出图片';
-        btn.disabled = false;
-    }).catch(err => {
-        console.error('Export error:', err);
-        btn.innerHTML = '📷 导出图片';
-        btn.disabled = false;
-        alert('导出失败，请重试');
-    });
-}
-
-// Compare modal
-function showCompareModal() {
-    const code2 = prompt('输入要对比的股票代码（6位数字）:', '');
-    if (code2 && /^\d{6}$/.test(code2)) {
-        location.href = '/compare/' + stockCode + '/' + code2;
-    }
-}
-
 // Load CYQ Chip Distribution data
 function loadCyqData() {
     fetch('/api/stock/' + stockCode + '/cyq')
@@ -967,21 +992,54 @@ function loadStrategyData() {
                 html += '<div class="strategy-item triggered">';
                 html += '<div class="strategy-name">' + (s.name_cn || s.strategy) + '</div>';
                 if (s.details) {
+                    // Chinese labels for strategy fields
+                    const fieldLabels = {
+                        // 低波动增长 (low_atr)
+                        'avg_daily_change': '日均波动',
+                        'period_high': '10日最高',
+                        'period_low': '10日最低',
+                        'range_ratio': '波动幅度',
+                        // 海龟突破 (turtle_trade)
+                        'close': '当前价',
+                        'high_60d': '60日最高',
+                        'breakout_pct': '突破幅度',
+                        // 回踩年线 (backtrace_ma250)
+                        'highest_price': '最高价',
+                        'lowest_price': '最低价',
+                        'retracement': '回撤幅度',
+                        'volume_ratio': '量比',
+                        'ma250': '年线价',
+                        // 平台突破 (platform_breakthrough)
+                        'breakthrough_date': '突破日期',
+                        'ma60': '60日均线',
+                        // 放量跌停 (climax_limitdown)
+                        'drop_pct': '跌幅',
+                        'amount_yi': '成交额(亿)',
+                        // 无大幅回撤 (low_backtrace_increase)
+                        'gain_pct': '涨幅',
+                        'start_price': '起始价',
+                        'end_price': '现价',
+                        'max_single_drop': '最大单日跌幅',
+                        // 持续增长 (keep_increasing)
+                        'ma30_growth': 'MA30增长',
+                        'ma30_now': '当前MA30',
+                        'ma30_30d_ago': '30日前MA30',
+                    };
                     const detailItems = Object.entries(s.details).slice(0, 3);
                     html += '<div class="strategy-details">';
                     detailItems.forEach(([key, val]) => {
+                        const label = fieldLabels[key] || key;
                         let displayVal = typeof val === 'number' ? val.toFixed(2) : val;
-                        html += '<span class="detail-item">' + key + ': ' + displayVal + '</span>';
+                        // Add % for percentage fields
+                        if (key.includes('pct') || key.includes('change') || key.includes('ratio') || key.includes('growth') || key.includes('retracement')) {
+                            displayVal += '%';
+                        }
+                        html += '<span class="detail-item">' + label + ': ' + displayVal + '</span>';
                     });
                     html += '</div>';
                 }
                 html += '</div>';
             });
-            html += '</div>';
-
-            // Show count
-            html += '<div class="strategy-summary">';
-            html += '<span class="signal-tag bullish">触发 ' + triggered.length + ' 个买入策略</span>';
             html += '</div>';
 
             document.getElementById('strategy-content').innerHTML = html;
@@ -998,7 +1056,7 @@ updateWatchlistBtn();
 loadSignalData();
 load52WeekData();
 loadQuoteData();
-loadKline(60);
+loadKline(90);  // Default 90 days, user can zoom in/out
 loadMLPrediction();  // Load ML prediction in parallel
 loadCzscData();  // Load CZSC in parallel
 loadFundamentalData();  // Load fundamental data in parallel
@@ -1006,5 +1064,204 @@ loadCyqData();  // Load CYQ chip distribution in parallel
 loadStrategyData();  // Load trading strategies in parallel
 
 startQuoteRefresh();
+
+// Education functions
+function toggleEducation(idx) {
+    const eduDiv = document.getElementById('edu-' + idx);
+    if (eduDiv) {
+        const isHidden = eduDiv.style.display === 'none';
+        eduDiv.style.display = isHidden ? 'block' : 'none';
+        // Update button text
+        const btn = eduDiv.parentElement.querySelector('.learn-btn');
+        if (btn) {
+            btn.textContent = isHidden ? '收起' : '展开';
+        }
+    }
+}
+
+function toggleEducationContext() {
+    const content = document.getElementById('edu-content');
+    const btn = document.querySelector('.edu-toggle');
+    if (content.style.display === 'none') {
+        content.style.display = 'block';
+        btn.textContent = '收起';
+    } else {
+        content.style.display = 'none';
+        btn.textContent = '展开';
+    }
+}
+
+function showEducationContext(edu) {
+    const container = document.getElementById('education-context');
+    if (!edu) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+
+    // Show key factors (bullish)
+    const bullishDiv = document.getElementById('edu-bullish-factors');
+    if (edu.key_factors && edu.key_factors.length > 0) {
+        bullishDiv.innerHTML = edu.key_factors.map(f => `
+            <div class="factor-item">
+                <span class="factor-name">${f.name}</span>
+                <span class="factor-score up">+${f.contribution}</span>
+            </div>
+            <div class="factor-explain">${f.explanation}</div>
+        `).join('');
+    } else {
+        bullishDiv.innerHTML = '<div class="no-factors">暂无明显看多信号</div>';
+    }
+
+    // Show risk factors (bearish)
+    const bearishDiv = document.getElementById('edu-bearish-factors');
+    if (edu.risk_factors && edu.risk_factors.length > 0) {
+        bearishDiv.innerHTML = edu.risk_factors.map(f => `
+            <div class="factor-item">
+                <span class="factor-name">${f.name}</span>
+                <span class="factor-score down">${f.contribution}</span>
+            </div>
+            <div class="factor-explain">${f.explanation}</div>
+        `).join('');
+    } else {
+        bearishDiv.innerHTML = '<div class="no-factors">暂无明显风险信号</div>';
+    }
+
+    // Show suggested action
+    const actionDiv = document.getElementById('edu-action');
+    if (edu.suggested_action) {
+        actionDiv.innerHTML = `<strong>建议操作：</strong>${edu.suggested_action}`;
+        actionDiv.style.display = 'block';
+    } else {
+        actionDiv.style.display = 'none';
+    }
+
+    // Show regime education
+    const regimeDiv = document.getElementById('edu-regime');
+    if (edu.regime_education) {
+        const re = edu.regime_education;
+        regimeDiv.innerHTML = `
+            <div class="regime-info">
+                <strong>市场环境 - ${re.name}：</strong>${re.description}
+                <div class="regime-strategy"><strong>策略建议：</strong>${re.strategy}</div>
+            </div>
+        `;
+        regimeDiv.style.display = 'block';
+    } else {
+        regimeDiv.style.display = 'none';
+    }
+}
+
+// ============================================
+// AI Analysis Functions
+// ============================================
+
+function getApiKey() {
+    return localStorage.getItem('openai_api_key') || '';
+}
+
+function saveApiKeyToStorage(key) {
+    localStorage.setItem('openai_api_key', key);
+}
+
+function showApiKeyModal() {
+    const modal = document.getElementById('api-key-modal');
+    const input = document.getElementById('api-key-input');
+    input.value = getApiKey();
+    modal.style.display = 'flex';
+}
+
+function hideApiKeyModal() {
+    document.getElementById('api-key-modal').style.display = 'none';
+}
+
+function saveApiKey() {
+    const key = document.getElementById('api-key-input').value.trim();
+    saveApiKeyToStorage(key);
+    hideApiKeyModal();
+}
+
+function clearApiKey() {
+    saveApiKeyToStorage('');
+    document.getElementById('api-key-input').value = '';
+}
+
+function generateAiAnalysis() {
+    const apiKey = getApiKey();
+    if (!apiKey) {
+        showApiKeyModal();
+        return;
+    }
+
+    const btn = document.getElementById('ai-generate-btn');
+    const status = document.getElementById('ai-status');
+    const result = document.getElementById('ai-result');
+
+    // Show loading state
+    btn.textContent = '分析中...';
+    btn.classList.add('loading');
+    status.textContent = '';
+    result.style.display = 'none';
+
+    fetch('/api/stock/' + stockCode + '/ai-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey })
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.textContent = 'AI 分析';
+        btn.classList.remove('loading');
+
+        if (data.success) {
+            const formatted = formatAiAnalysis(data.analysis);
+            let html = formatted;
+            if (data.tokens_used) {
+                html += `<div class="ai-usage">Tokens: ${data.tokens_used}</div>`;
+            }
+            result.innerHTML = html;
+            result.style.display = 'block';
+        } else {
+            status.textContent = data.error;
+        }
+    })
+    .catch(err => {
+        console.error('AI analysis error:', err);
+        btn.textContent = 'AI 分析';
+        btn.classList.remove('loading');
+        status.textContent = '网络错误';
+    });
+}
+
+function formatAiAnalysis(text) {
+    // Convert markdown-like formatting to HTML
+    let html = text
+        // Headers
+        .replace(/### (.*)/g, '<h4 class="ai-h4">$1</h4>')
+        .replace(/## (.*)/g, '<h3 class="ai-h3">$1</h3>')
+        // Bold
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        // Lists
+        .replace(/^- (.*)/gm, '<li>$1</li>')
+        // Line breaks
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/\n/g, '<br>');
+
+    // Wrap lists
+    html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+
+    return '<div class="ai-analysis-content"><p>' + html + '</p></div>';
+}
+
+// No-op - API key status is handled by the modal
+
+// Close modal when clicking outside
+document.getElementById('api-key-modal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideApiKeyModal();
+    }
+});
+
 </script>
 {% endblock %}

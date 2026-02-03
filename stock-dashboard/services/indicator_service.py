@@ -2174,3 +2174,186 @@ def get_trix_signal(df):
             'trix_signal': round(trix_signal, 4) if trix_signal else 0
         }
     }
+
+
+# =============================================================================
+# CANDLESTICK PATTERN RECOGNITION
+# =============================================================================
+
+def detect_candlestick_patterns(df):
+    """
+    Detect common candlestick patterns in the data.
+
+    Returns DataFrame with pattern columns added.
+    """
+    if df.empty or len(df) < 3:
+        return df
+
+    df = df.copy()
+
+    # Calculate basic candle metrics
+    df['body'] = df['close'] - df['open']
+    df['body_size'] = abs(df['body'])
+    df['upper_shadow'] = df['high'] - df[['open', 'close']].max(axis=1)
+    df['lower_shadow'] = df[['open', 'close']].min(axis=1) - df['low']
+    df['range'] = df['high'] - df['low']
+    df['is_bullish'] = df['close'] > df['open']
+
+    # Average body size for reference
+    avg_body = df['body_size'].rolling(window=14).mean()
+    avg_range = df['range'].rolling(window=14).mean()
+
+    # Initialize pattern columns
+    df['pattern_doji'] = False
+    df['pattern_hammer'] = False
+    df['pattern_inverted_hammer'] = False
+    df['pattern_engulfing_bull'] = False
+    df['pattern_engulfing_bear'] = False
+    df['pattern_morning_star'] = False
+    df['pattern_evening_star'] = False
+    df['pattern_three_white_soldiers'] = False
+    df['pattern_three_black_crows'] = False
+    df['pattern_harami_bull'] = False
+    df['pattern_harami_bear'] = False
+
+    for i in range(2, len(df)):
+        curr = df.iloc[i]
+        prev = df.iloc[i - 1]
+        prev2 = df.iloc[i - 2]
+        avg_b = avg_body.iloc[i] if not pd.isna(avg_body.iloc[i]) else curr['body_size']
+        avg_r = avg_range.iloc[i] if not pd.isna(avg_range.iloc[i]) else curr['range']
+
+        if avg_b == 0:
+            avg_b = 0.01
+        if avg_r == 0:
+            avg_r = 0.01
+
+        # Doji: Very small body relative to range
+        if curr['body_size'] < avg_b * 0.1 and curr['range'] > avg_r * 0.5:
+            df.iloc[i, df.columns.get_loc('pattern_doji')] = True
+
+        # Hammer: Small body at top, long lower shadow, downtrend context
+        if (curr['lower_shadow'] > curr['body_size'] * 2 and
+            curr['upper_shadow'] < curr['body_size'] * 0.5 and
+            curr['body_size'] > 0 and
+            prev['close'] < prev['open']):  # After bearish candle
+            df.iloc[i, df.columns.get_loc('pattern_hammer')] = True
+
+        # Inverted Hammer: Small body at bottom, long upper shadow
+        if (curr['upper_shadow'] > curr['body_size'] * 2 and
+            curr['lower_shadow'] < curr['body_size'] * 0.5 and
+            curr['body_size'] > 0 and
+            prev['close'] < prev['open']):  # After bearish candle
+            df.iloc[i, df.columns.get_loc('pattern_inverted_hammer')] = True
+
+        # Bullish Engulfing: Current bullish candle engulfs previous bearish
+        if (curr['is_bullish'] and not prev['is_bullish'] and
+            curr['open'] < prev['close'] and curr['close'] > prev['open'] and
+            curr['body_size'] > avg_b * 0.8):
+            df.iloc[i, df.columns.get_loc('pattern_engulfing_bull')] = True
+
+        # Bearish Engulfing: Current bearish candle engulfs previous bullish
+        if (not curr['is_bullish'] and prev['is_bullish'] and
+            curr['open'] > prev['close'] and curr['close'] < prev['open'] and
+            curr['body_size'] > avg_b * 0.8):
+            df.iloc[i, df.columns.get_loc('pattern_engulfing_bear')] = True
+
+        # Morning Star: Bearish, small body, bullish (reversal)
+        if (i >= 2 and
+            not prev2['is_bullish'] and prev2['body_size'] > avg_b and
+            prev['body_size'] < avg_b * 0.3 and
+            curr['is_bullish'] and curr['body_size'] > avg_b * 0.5 and
+            curr['close'] > (prev2['open'] + prev2['close']) / 2):
+            df.iloc[i, df.columns.get_loc('pattern_morning_star')] = True
+
+        # Evening Star: Bullish, small body, bearish (reversal)
+        if (i >= 2 and
+            prev2['is_bullish'] and prev2['body_size'] > avg_b and
+            prev['body_size'] < avg_b * 0.3 and
+            not curr['is_bullish'] and curr['body_size'] > avg_b * 0.5 and
+            curr['close'] < (prev2['open'] + prev2['close']) / 2):
+            df.iloc[i, df.columns.get_loc('pattern_evening_star')] = True
+
+        # Three White Soldiers: Three consecutive bullish candles
+        if (i >= 2 and
+            curr['is_bullish'] and prev['is_bullish'] and prev2['is_bullish'] and
+            curr['close'] > prev['close'] > prev2['close'] and
+            curr['open'] > prev['open'] > prev2['open'] and
+            all(df.iloc[j]['upper_shadow'] < df.iloc[j]['body_size'] * 0.5 for j in [i, i-1, i-2])):
+            df.iloc[i, df.columns.get_loc('pattern_three_white_soldiers')] = True
+
+        # Three Black Crows: Three consecutive bearish candles
+        if (i >= 2 and
+            not curr['is_bullish'] and not prev['is_bullish'] and not prev2['is_bullish'] and
+            curr['close'] < prev['close'] < prev2['close'] and
+            curr['open'] < prev['open'] < prev2['open'] and
+            all(df.iloc[j]['lower_shadow'] < df.iloc[j]['body_size'] * 0.5 for j in [i, i-1, i-2])):
+            df.iloc[i, df.columns.get_loc('pattern_three_black_crows')] = True
+
+        # Bullish Harami: Small bullish inside previous bearish
+        if (curr['is_bullish'] and not prev['is_bullish'] and
+            curr['body_size'] < prev['body_size'] * 0.5 and
+            curr['high'] < prev['open'] and curr['low'] > prev['close']):
+            df.iloc[i, df.columns.get_loc('pattern_harami_bull')] = True
+
+        # Bearish Harami: Small bearish inside previous bullish
+        if (not curr['is_bullish'] and prev['is_bullish'] and
+            curr['body_size'] < prev['body_size'] * 0.5 and
+            curr['high'] < prev['close'] and curr['low'] > prev['open']):
+            df.iloc[i, df.columns.get_loc('pattern_harami_bear')] = True
+
+    return df
+
+
+def get_candlestick_patterns(df):
+    """
+    Get current candlestick patterns and their signals.
+
+    Returns dict with detected patterns and overall signal.
+    """
+    if df.empty or len(df) < 3:
+        return {'patterns': [], 'signal': 'neutral', 'score': 0}
+
+    # Detect patterns if not already done
+    if 'pattern_doji' not in df.columns:
+        df = detect_candlestick_patterns(df)
+
+    latest = df.iloc[-1]
+    patterns = []
+    score = 0
+
+    # Pattern definitions with their signals
+    pattern_info = {
+        'pattern_doji': {'name': '十字星', 'name_en': 'Doji', 'type': 'reversal', 'strength': 0.1},
+        'pattern_hammer': {'name': '锤子线', 'name_en': 'Hammer', 'type': 'bullish', 'strength': 0.4},
+        'pattern_inverted_hammer': {'name': '倒锤子', 'name_en': 'Inverted Hammer', 'type': 'bullish', 'strength': 0.3},
+        'pattern_engulfing_bull': {'name': '看涨吞没', 'name_en': 'Bullish Engulfing', 'type': 'bullish', 'strength': 0.5},
+        'pattern_engulfing_bear': {'name': '看跌吞没', 'name_en': 'Bearish Engulfing', 'type': 'bearish', 'strength': -0.5},
+        'pattern_morning_star': {'name': '启明星', 'name_en': 'Morning Star', 'type': 'bullish', 'strength': 0.6},
+        'pattern_evening_star': {'name': '黄昏星', 'name_en': 'Evening Star', 'type': 'bearish', 'strength': -0.6},
+        'pattern_three_white_soldiers': {'name': '三连阳', 'name_en': 'Three White Soldiers', 'type': 'bullish', 'strength': 0.7},
+        'pattern_three_black_crows': {'name': '三连阴', 'name_en': 'Three Black Crows', 'type': 'bearish', 'strength': -0.7},
+        'pattern_harami_bull': {'name': '看涨孕线', 'name_en': 'Bullish Harami', 'type': 'bullish', 'strength': 0.35},
+        'pattern_harami_bear': {'name': '看跌孕线', 'name_en': 'Bearish Harami', 'type': 'bearish', 'strength': -0.35},
+    }
+
+    for col, info in pattern_info.items():
+        if col in df.columns and latest.get(col, False):
+            patterns.append({
+                'name': info['name'],
+                'name_en': info['name_en'],
+                'type': info['type'],
+                'strength': abs(info['strength'])
+            })
+            score += info['strength']
+
+    # Normalize score
+    score = max(-1, min(1, score))
+    signal = 'bullish' if score > 0.1 else ('bearish' if score < -0.1 else 'neutral')
+
+    return {
+        'patterns': patterns,
+        'signal': signal,
+        'score': score,
+        'count': len(patterns)
+    }

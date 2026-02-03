@@ -21,6 +21,23 @@ import numpy as np
 import pandas as pd
 
 
+def _to_native(obj):
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_to_native(v) for v in obj]
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.bool_, np.bool)):
+        return bool(obj)
+    return obj
+
+
 class CYQCalculator:
     """
     Chip Distribution Calculator.
@@ -369,6 +386,6 @@ def get_cyq_analysis(df):
 
     return {
         'available': True,
-        'data': cyq_data.to_dict(),
-        'signal': signal
+        'data': _to_native(cyq_data.to_dict()),
+        'signal': _to_native(signal)
     }

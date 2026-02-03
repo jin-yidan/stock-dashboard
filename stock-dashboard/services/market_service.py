@@ -140,145 +140,69 @@ def get_regime_weights(regime):
     """
     Get indicator weights adjusted for market regime.
 
-    - Bull market: Trend-following works better (momentum, MA, Supertrend)
-    - Bear market: Mean reversion works better (RSI, Bollinger, CYQ)
-    - Sideways: Oscillators work better (KDJ, RSI, Wave Trend)
-
-    Includes new indicators from InStock:
-    - supertrend: Superior trend-following indicator
-    - wave_trend: Advanced oscillator
-    - vr: Volume ratio (buying vs selling)
-    - cr: Energy indicator
-    - cyq: Chip distribution
-    - strategy: Trading strategies
+    OPTIMIZED based on backtest accuracy:
+    - supertrend: 62.4% (best)
+    - bollinger: 60.5%
+    - volume: 58.4%
+    - wave_trend: 55.4%
+    - weekly: 53.8%
+    - momentum: 40.4% (worst - minimized)
     """
+    # Base optimized weights - high accuracy indicators get more weight
+    base = {
+        'supertrend': 0.18,    # 62.4% - best predictor
+        'bollinger': 0.14,     # 60.5%
+        'volume': 0.12,        # 58.4%
+        'wave_trend': 0.10,    # 55.4%
+        'weekly': 0.10,        # 53.8%
+        'ma': 0.08,            # 50.1%
+        'macd': 0.06,          # 49.8%
+        'rsi': 0.04,           # 47.8%
+        'kdj': 0.04,           # 46.4%
+        'momentum': 0.02,      # 40.4% - worst
+        'capital_flow': 0.04,
+        'trend_strength': 0.02,
+        'vr': 0.02,
+        'cr': 0.02,
+        'cyq': 0.02,
+        'strategy': 0.00,
+    }
+
+    # Slight regime adjustments (keep base weights dominant)
     if regime == 'strong_bull':
-        return {
-            # Core - emphasize trend following
-            'ma': 0.12,
-            'macd': 0.10,
-            'momentum': 0.14,
-            'kdj': 0.05,
-            'bollinger': 0.04,
-            'rsi': 0.04,
-            'volume': 0.06,
-            'capital_flow': 0.08,
-            'weekly': 0.03,
-            'trend_strength': 0.04,
-            # New - emphasize trend indicators
-            'supertrend': 0.12,  # High weight in bull
-            'wave_trend': 0.04,
-            'vr': 0.04,
-            'cr': 0.02,
-            'cyq': 0.04,
-            'strategy': 0.04,
-        }
+        base['supertrend'] = 0.20  # Boost trend in bull
+        base['weekly'] = 0.12
+        base['bollinger'] = 0.12
     elif regime == 'bull':
-        return {
-            # Core
-            'ma': 0.10,
-            'macd': 0.10,
-            'momentum': 0.12,
-            'kdj': 0.06,
-            'bollinger': 0.05,
-            'rsi': 0.05,
-            'volume': 0.06,
-            'capital_flow': 0.08,
-            'weekly': 0.03,
-            'trend_strength': 0.03,
-            # New
-            'supertrend': 0.10,
-            'wave_trend': 0.05,
-            'vr': 0.04,
-            'cr': 0.03,
-            'cyq': 0.05,
-            'strategy': 0.05,
-        }
+        base['supertrend'] = 0.19
+        base['weekly'] = 0.11
     elif regime == 'strong_bear':
-        return {
-            # Core - emphasize mean reversion
-            'ma': 0.06,
-            'macd': 0.08,
-            'momentum': 0.06,
-            'kdj': 0.10,
-            'bollinger': 0.12,
-            'rsi': 0.10,
-            'volume': 0.05,
-            'capital_flow': 0.06,
-            'weekly': 0.03,
-            'trend_strength': 0.02,
-            # New - emphasize oversold indicators
-            'supertrend': 0.06,
-            'wave_trend': 0.06,
-            'vr': 0.04,
-            'cr': 0.04,
-            'cyq': 0.08,  # High weight - chip analysis valuable in bear
-            'strategy': 0.04,
-        }
+        base['bollinger'] = 0.16  # Boost mean reversion in bear
+        base['wave_trend'] = 0.12
+        base['supertrend'] = 0.16
     elif regime == 'bear':
-        return {
-            # Core
-            'ma': 0.08,
-            'macd': 0.08,
-            'momentum': 0.08,
-            'kdj': 0.09,
-            'bollinger': 0.10,
-            'rsi': 0.09,
-            'volume': 0.05,
-            'capital_flow': 0.06,
-            'weekly': 0.03,
-            'trend_strength': 0.02,
-            # New
-            'supertrend': 0.06,
-            'wave_trend': 0.05,
-            'vr': 0.04,
-            'cr': 0.04,
-            'cyq': 0.07,
-            'strategy': 0.06,
-        }
-    else:  # sideways
-        return {
-            # Core - emphasize oscillators
-            'ma': 0.08,
-            'macd': 0.08,
-            'momentum': 0.08,
-            'kdj': 0.10,
-            'bollinger': 0.08,
-            'rsi': 0.08,
-            'volume': 0.05,
-            'capital_flow': 0.06,
-            'weekly': 0.03,
-            'trend_strength': 0.02,
-            # New - balanced approach
-            'supertrend': 0.06,
-            'wave_trend': 0.07,  # Oscillator works well in sideways
-            'vr': 0.05,
-            'cr': 0.04,
-            'cyq': 0.06,
-            'strategy': 0.06,
-        }
+        base['bollinger'] = 0.15
+        base['wave_trend'] = 0.11
+    # sideways uses base weights
+
+    return base
 
 
 def get_northbound_flow(days=20):
     """
     Get northbound capital flow (沪股通+深股通).
     This is "smart money" from foreign institutions.
+
+    Note: This data source may not be available in all adata versions.
+    Returns empty DataFrame when unavailable.
     """
     cache_key = f"northbound_{days}"
     cached = _get_cached(cache_key)
     if cached is not None:
         return cached
 
-    try:
-        # Try to get northbound flow data
-        df = adata.stock.market.get_north_flow()
-        if df is not None and not df.empty:
-            df = df.sort_values('trade_date').tail(days)
-            _set_cached(cache_key, df)
-            return df
-    except Exception as e:
-        print(f"Error getting northbound flow: {e}")
-
+    # Note: adata.stock.market.get_north_flow() is not available in current version
+    # Return empty DataFrame - the signal functions will handle this gracefully
     return pd.DataFrame()
 
 

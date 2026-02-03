@@ -4,7 +4,16 @@ pandas>=2.0.0
 numpy>=1.24.0
 scikit-learn>=1.3.0
 joblib>=1.3.0
+pytz>=2024.1
+
+# Optional: AI Analysis (requires user's OpenAI API key)
+openai>=1.0.0
 
 # Optional: better ML models (install if available)
 # xgboost>=2.0.0
 # lightgbm>=4.0.0
+
+# Optional: CZSC Integration (Chan Theory features)
+# Install from local directory: pip install -e ../czsc
+# Or from PyPI: pip install czsc>=0.10.9
+# Note: CZSC requires ta-lib for some features

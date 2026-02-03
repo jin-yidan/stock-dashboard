@@ -21,6 +21,23 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 
+def _to_native(obj):
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: _to_native(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_to_native(v) for v in obj]
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.bool_, np.bool)):
+        return bool(obj)
+    return obj
+
+
 def check_volume_surge(df, threshold=2.0, amount_min=200000000):
     """
     Check if there's a volume surge with minimum amount.
@@ -592,13 +609,13 @@ def run_all_strategies(df):
     for name, strategy_func in strategies:
         try:
             result = strategy_func(df)
-            results['strategies'][name] = result
+            results['strategies'][name] = _to_native(result)
 
             if result.get('triggered', False):
                 results['triggered'].append({
                     'strategy': name,
                     'name_cn': result.get('name_cn', name),
-                    'details': result.get('details', {})
+                    'details': _to_native(result.get('details', {}))
                 })
             else:
                 results['not_triggered'].append({

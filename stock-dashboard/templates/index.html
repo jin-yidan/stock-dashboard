@@ -2,27 +2,57 @@
 
 {% block content %}
 <!-- Main Content -->
-<div class="main-container">
-    <!-- Search -->
-    <div class="search-wrapper">
-        <form onsubmit="return go()">
-            <input type="text" id="code" class="main-search" placeholder="输入股票代码或名称，如 600519 或 茅台" autofocus>
-        </form>
-        <div id="hero-search-results" class="search-dropdown"></div>
-    </div>
+<div class="home-page">
+    <div class="home-container">
+        <!-- Page Header -->
+        <header class="page-header">
+            <h1 class="page-title">股票查询</h1>
+            <p class="page-subtitle">搜索 A 股代码或名称，查看实时行情与技术分析</p>
+        </header>
 
-    <!-- Watchlist -->
-    <div class="watchlist-wrapper">
-        <div class="watchlist-header">
-            <h2>自选股</h2>
-            <button class="add-btn" onclick="showAddModal()">+ 添加</button>
+        <!-- Search -->
+        <div class="search-section">
+            <form onsubmit="return go()" class="search-form">
+                <div class="search-input-wrapper">
+                    <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="M21 21l-4.35-4.35"></path>
+                    </svg>
+                    <input type="text" id="code" class="search-input" placeholder="输入代码或名称，如 600519、茅台" autofocus>
+                </div>
+            </form>
+            <div id="hero-search-results" class="search-dropdown"></div>
         </div>
-        <div id="watchlist" class="stock-list">
-            <!-- Populated by JS -->
-        </div>
-        <p id="empty-msg" class="empty-hint" style="display:none;">
-            暂无自选股，点击"添加"按钮添加
-        </p>
+
+        <!-- Watchlist -->
+        <section class="watchlist-section">
+            <div class="section-header">
+                <h2 class="section-title">自选股</h2>
+                <button class="btn-add-stock" onclick="showAddModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    添加
+                </button>
+            </div>
+
+            <!-- Table Header -->
+            <div class="stock-table-header">
+                <span class="col-name">名称</span>
+                <span class="col-price">现价</span>
+                <span class="col-change">涨跌幅</span>
+                <span class="col-action"></span>
+            </div>
+
+            <div id="watchlist" class="stock-table">
+                <!-- Populated by JS -->
+            </div>
+            <div id="empty-msg" class="empty-state" style="display:none;">
+                <p>暂无自选股</p>
+                <button class="btn-add-empty" onclick="showAddModal()">添加第一只股票</button>
+            </div>
+        </section>
     </div>
 </div>
 
@@ -149,14 +179,15 @@ function getCachedQuote(code) {
 
 function renderQuoteHtml(data) {
     if (!data || data.error || !data.price) {
-        return '<span class="quote-na">--</span>';
+        return { price: '--', pct: '--', pctClass: '' };
     }
     const pctClass = data.change_pct >= 0 ? 'up' : 'down';
     const prefix = data.change_pct >= 0 ? '+' : '';
-    return `
-        <span class="quote-price ${pctClass}">${data.price.toFixed(2)}</span>
-        <span class="quote-pct ${pctClass}">${prefix}${data.change_pct.toFixed(2)}%</span>
-    `;
+    return {
+        price: data.price.toFixed(2),
+        pct: prefix + data.change_pct.toFixed(2) + '%',
+        pctClass: pctClass
+    };
 }
 
 function renderWatchlist() {
@@ -166,7 +197,7 @@ function renderWatchlist() {
 
     if (list.length === 0) {
         container.innerHTML = '';
-        emptyMsg.style.display = 'block';
+        emptyMsg.style.display = 'flex';
         return;
     }
 
@@ -175,15 +206,23 @@ function renderWatchlist() {
     // Render with cached quotes immediately
     container.innerHTML = list.map(s => {
         const cached = getCachedQuote(s.code);
-        const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
+        const quote = cached ? renderQuoteHtml(cached) : { price: '--', pct: '--', pctClass: '' };
         return `
-            <a href="/stock/${s.code}" class="stock-item" id="stock-${s.code}" onmouseenter="preloadStock('${s.code}')">
-                <div class="stock-info">
+            <a href="/stock/${s.code}" class="stock-row" id="stock-${s.code}" onmouseenter="preloadStock('${s.code}')">
+                <span class="col-name">
                     <span class="stock-name">${s.name}</span>
                     <span class="stock-code">${s.code}</span>
-                </div>
-                <div class="stock-price" id="quote-${s.code}">${quoteHtml}</div>
-                <button class="remove-btn" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${s.code}')" title="移除">×</button>
+                </span>
+                <span class="col-price" id="price-${s.code}">${quote.price}</span>
+                <span class="col-change ${quote.pctClass}" id="pct-${s.code}">${quote.pct}</span>
+                <span class="col-action">
+                    <button class="btn-remove" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${s.code}')" title="移除">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </span>
             </a>
         `;
     }).join('');
@@ -200,12 +239,20 @@ function loadWatchlistQuotes(list) {
                 if (!data.error && data.price) {
                     saveQuoteCache(s.code, data);
                 }
-                const el = document.getElementById('quote-' + s.code);
-                if (el) el.innerHTML = renderQuoteHtml(data);
+                const quote = renderQuoteHtml(data);
+                const priceEl = document.getElementById('price-' + s.code);
+                const pctEl = document.getElementById('pct-' + s.code);
+                if (priceEl) priceEl.textContent = quote.price;
+                if (pctEl) {
+                    pctEl.textContent = quote.pct;
+                    pctEl.className = 'col-change ' + quote.pctClass;
+                }
             })
             .catch(() => {
-                const el = document.getElementById('quote-' + s.code);
-                if (el) el.innerHTML = '<span class="quote-na">--</span>';
+                const priceEl = document.getElementById('price-' + s.code);
+                const pctEl = document.getElementById('pct-' + s.code);
+                if (priceEl) priceEl.textContent = '--';
+                if (pctEl) { pctEl.textContent = '--'; pctEl.className = 'col-change'; }
             });
     });
 }
@@ -227,20 +274,28 @@ function addStockElement(code, name, prepend = false) {
     emptyMsg.style.display = 'none';
 
     const cached = getCachedQuote(code);
-    const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
+    const quote = cached ? renderQuoteHtml(cached) : { price: '--', pct: '--', pctClass: '' };
 
     const a = document.createElement('a');
     a.href = '/stock/' + code;
-    a.className = 'stock-item';
+    a.className = 'stock-row';
     a.id = 'stock-' + code;
     a.onmouseenter = () => preloadStock(code);
     a.innerHTML = `
-        <div class="stock-info">
+        <span class="col-name">
             <span class="stock-name">${name}</span>
             <span class="stock-code">${code}</span>
-        </div>
-        <div class="stock-price" id="quote-${code}">${quoteHtml}</div>
-        <button class="remove-btn" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${code}')" title="移除">×</button>
+        </span>
+        <span class="col-price" id="price-${code}">${quote.price}</span>
+        <span class="col-change ${quote.pctClass}" id="pct-${code}">${quote.pct}</span>
+        <span class="col-action">
+            <button class="btn-remove" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${code}')" title="移除">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </span>
     `;
 
     if (prepend && container.firstChild) {
@@ -260,12 +315,20 @@ function loadSingleQuote(code) {
             if (!data.error && data.price) {
                 saveQuoteCache(code, data);
             }
-            const el = document.getElementById('quote-' + code);
-            if (el) el.innerHTML = renderQuoteHtml(data);
+            const quote = renderQuoteHtml(data);
+            const priceEl = document.getElementById('price-' + code);
+            const pctEl = document.getElementById('pct-' + code);
+            if (priceEl) priceEl.textContent = quote.price;
+            if (pctEl) {
+                pctEl.textContent = quote.pct;
+                pctEl.className = 'col-change ' + quote.pctClass;
+            }
         })
         .catch(() => {
-            const el = document.getElementById('quote-' + code);
-            if (el) el.innerHTML = '<span class="quote-na">--</span>';
+            const priceEl = document.getElementById('price-' + code);
+            const pctEl = document.getElementById('pct-' + code);
+            if (priceEl) priceEl.textContent = '--';
+            if (pctEl) { pctEl.textContent = '--'; pctEl.className = 'col-change'; }
         });
 }
 
