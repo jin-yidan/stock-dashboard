@@ -1,41 +1,47 @@
+import pandas as pd
 from services import data_service, indicator_service, ml_service, fundamental_service, czsc_service
+from services import market_service
 
-# IMPROVED weights based on backtesting analysis
-# Key findings:
-# - RSI oversold works (55%), overbought doesn't (37%)
-# - Momentum after big moves: 66.7% accuracy
-# - Individual indicators ~50% but combinations help
-# - Strong signals (>0.4) work better: 56.7%
+# Dynamic weights - adjusted based on market regime
+# See market_service.get_regime_weights() for regime-specific weights
 
-# Base weights (without CZSC)
-WEIGHTS_BASE = {
-    'ma': 0.15,
-    'macd': 0.15,
-    'momentum': 0.18,
+# Default weights (fallback)
+DEFAULT_WEIGHTS = {
+    'ma': 0.14,
+    'macd': 0.14,
+    'momentum': 0.16,
     'kdj': 0.12,
     'bollinger': 0.10,
     'rsi': 0.10,
     'volume': 0.08,
     'capital_flow': 0.08,
-    'weekly': 0.04
-}
-
-# Weights with CZSC enabled (reduced proportionally to make room for CZSC)
-WEIGHTS_WITH_CZSC = {
-    'ma': 0.13,
-    'macd': 0.13,
-    'momentum': 0.15,
-    'kdj': 0.10,
-    'bollinger': 0.09,
-    'rsi': 0.09,
-    'volume': 0.07,
-    'capital_flow': 0.07,
     'weekly': 0.04,
-    'czsc': 0.13
+    'trend_strength': 0.04  # New: ADX-based
 }
 
-# Use appropriate weights based on CZSC availability
-WEIGHTS = WEIGHTS_WITH_CZSC if czsc_service.is_czsc_available() else WEIGHTS_BASE
+
+def get_current_weights():
+    """Get indicator weights adjusted for current market regime."""
+    try:
+        regime_info = market_service.detect_market_regime()
+        regime = regime_info.get('regime', 'sideways')
+        weights = market_service.get_regime_weights(regime)
+
+        # Add CZSC weight if available
+        if czsc_service.is_czsc_available():
+            # Reduce other weights proportionally to add CZSC
+            factor = 0.88  # Leave 12% for CZSC
+            weights = {k: v * factor for k, v in weights.items()}
+            weights['czsc'] = 0.12
+
+        return weights, regime_info
+    except Exception as e:
+        print(f"Error getting regime weights: {e}")
+        return DEFAULT_WEIGHTS, {'regime': 'unknown'}
+
+
+# For backward compatibility
+WEIGHTS = DEFAULT_WEIGHTS
 
 def analyze_ma(df):
     """Analyze MA trend."""
@@ -493,10 +499,113 @@ def analyze_czsc(stock_code, df):
         }
     }
 
-def generate_signal(stock_code):
-    """Generate comprehensive signal with all indicators.
+def analyze_trend_strength(df):
+    """Analyze trend strength using ADX."""
+    if df.empty or len(df) < 30 or 'adx' not in df.columns:
+        return {
+            'name': '趋势强度',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': 0.04,
+            'weighted_score': 0,
+            'plain_explanation': '数据不足'
+        }
 
-    Optimized for speed - fundamental data is loaded separately via /api/stock/<code>/fundamental
+    latest = df.iloc[-1]
+    adx = latest.get('adx', 25)
+    plus_di = latest.get('plus_di', 50)
+    minus_di = latest.get('minus_di', 50)
+
+    if adx is None or pd.isna(adx):
+        adx = 25
+
+    # ADX interpretation
+    # > 25: Strong trend
+    # < 20: Weak/no trend
+    score = 0
+
+    if adx > 40:
+        # Very strong trend - follow the direction
+        if plus_di > minus_di:
+            score = 0.6
+            exp = f'ADX {adx:.0f}，强势上涨趋势'
+        else:
+            score = -0.6
+            exp = f'ADX {adx:.0f}，强势下跌趋势'
+    elif adx > 25:
+        # Moderate trend
+        if plus_di > minus_di:
+            score = 0.3
+            exp = f'ADX {adx:.0f}，上涨趋势中'
+        else:
+            score = -0.3
+            exp = f'ADX {adx:.0f}，下跌趋势中'
+    else:
+        # Weak trend - mean reversion more likely
+        score = 0
+        exp = f'ADX {adx:.0f}，趋势不明显'
+
+    signal = 'bullish' if score > 0.1 else ('bearish' if score < -0.1 else 'neutral')
+
+    return {
+        'name': '趋势强度',
+        'signal': signal,
+        'score': score,
+        'weight': 0.04,
+        'weighted_score': score * 0.04,
+        'plain_explanation': exp
+    }
+
+
+def analyze_northbound(stock_code):
+    """Analyze northbound flow signal."""
+    try:
+        nb_signal = market_service.get_northbound_signal()
+        score = nb_signal.get('score', 0)
+        details = nb_signal.get('details', {})
+
+        total_5d = details.get('total_5d_yi', 0)
+
+        if score > 0.3:
+            exp = f'北向资金5日净流入{total_5d}亿，外资看多'
+        elif score > 0:
+            exp = f'北向资金小幅流入，外资偏多'
+        elif score < -0.3:
+            exp = f'北向资金5日净流出{abs(total_5d)}亿，外资看空'
+        elif score < 0:
+            exp = f'北向资金小幅流出，外资偏空'
+        else:
+            exp = '北向资金流向中性'
+
+        signal = nb_signal.get('signal', 'neutral')
+
+        return {
+            'name': '北向资金',
+            'signal': signal,
+            'score': score,
+            'weight': 0.10,
+            'weighted_score': score * 0.10,
+            'plain_explanation': exp
+        }
+    except Exception as e:
+        return {
+            'name': '北向资金',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': 0.10,
+            'weighted_score': 0,
+            'plain_explanation': '暂无数据'
+        }
+
+
+def generate_signal(stock_code):
+    """Generate comprehensive signal using ensemble approach with market regime detection.
+
+    Key improvements:
+    1. Dynamic weights based on market regime (bull/bear/sideways)
+    2. Northbound flow signal (smart money indicator)
+    3. ADX trend strength signal
+    4. Ensemble combining technical + market signals
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -522,7 +631,11 @@ def generate_signal(stock_code):
     import threading
     threading.Thread(target=db_service.save_daily_data, args=(stock_code, df), daemon=True).start()
 
-    # Analyze indicators that only need df (fast, no network)
+    # Get market regime and adjusted weights
+    weights, regime_info = get_current_weights()
+    regime = regime_info.get('regime', 'unknown')
+
+    # Analyze all technical indicators
     indicators = [
         analyze_ma(df),
         analyze_macd(df),
@@ -531,21 +644,38 @@ def generate_signal(stock_code):
         analyze_bollinger(df),
         analyze_rsi(df),
         analyze_volume(df),
-        analyze_weekly_trend(df)
+        analyze_weekly_trend(df),
+        analyze_trend_strength(df),  # NEW: ADX-based
     ]
 
-    # Fetch capital flow in parallel with CZSC analysis
+    # Update weights based on regime
+    for ind in indicators:
+        name_key = ind['name']
+        # Map Chinese names to weight keys
+        key_map = {
+            '均线': 'ma', 'MACD': 'macd', '动量': 'momentum',
+            'KDJ': 'kdj', '布林带': 'bollinger', 'RSI': 'rsi',
+            '成交量': 'volume', '周线': 'weekly', '趋势强度': 'trend_strength'
+        }
+        weight_key = key_map.get(name_key)
+        if weight_key and weight_key in weights:
+            ind['weight'] = weights[weight_key]
+            ind['weighted_score'] = ind['score'] * weights[weight_key]
+
+    # Fetch external signals in parallel
     capital_result = None
     czsc_result = None
+    northbound_result = None
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         futures = {
             executor.submit(analyze_capital_flow, stock_code): 'capital',
+            executor.submit(analyze_northbound, stock_code): 'northbound',
         }
         if czsc_service.is_czsc_available():
             futures[executor.submit(analyze_czsc, stock_code, df)] = 'czsc'
 
-        for future in as_completed(futures):
+        for future in as_completed(futures, timeout=8):
             name = futures[future]
             try:
                 result = future.result(timeout=5)
@@ -553,20 +683,47 @@ def generate_signal(stock_code):
                     capital_result = result
                 elif name == 'czsc':
                     czsc_result = result
+                elif name == 'northbound':
+                    northbound_result = result
             except Exception:
                 pass
 
+    # Update capital flow weight
     if capital_result:
+        capital_result['weight'] = weights.get('capital_flow', 0.08)
+        capital_result['weighted_score'] = capital_result['score'] * capital_result['weight']
         indicators.append(capital_result)
+
+    # Add northbound signal
+    if northbound_result:
+        indicators.append(northbound_result)
+
+    # Add CZSC with regime-adjusted weight
     if czsc_result:
+        czsc_result['weight'] = weights.get('czsc', 0.12)
+        czsc_result['weighted_score'] = czsc_result['score'] * czsc_result['weight']
         indicators.append(czsc_result)
 
-    total_score = sum(ind['weighted_score'] for ind in indicators)
+    # Calculate ensemble score
+    technical_score = sum(ind['weighted_score'] for ind in indicators)
+
+    # Regime adjustment: boost/dampen signal based on market condition
+    regime_multiplier = 1.0
+    if regime == 'strong_bull' and technical_score > 0:
+        regime_multiplier = 1.15  # Boost bullish signals in bull market
+    elif regime == 'strong_bear' and technical_score < 0:
+        regime_multiplier = 1.15  # Boost bearish signals in bear market
+    elif regime == 'strong_bull' and technical_score < 0:
+        regime_multiplier = 0.85  # Dampen bearish signals in bull market
+    elif regime == 'strong_bear' and technical_score > 0:
+        regime_multiplier = 0.85  # Dampen bullish signals in bear market
+
+    total_score = technical_score * regime_multiplier
 
     # Get stop-loss suggestion
     stop_info = indicator_service.get_stop_loss_suggestion(df)
 
-    # IMPROVED: Higher thresholds based on backtesting
+    # Determine signal with regime context
     if total_score >= 0.35:
         signal, signal_cn = 'strong_buy', '强烈看多'
     elif total_score >= 0.18:
@@ -581,18 +738,33 @@ def generate_signal(stock_code):
     bullish = [i['name'] for i in indicators if i['signal'] == 'bullish']
     bearish = [i['name'] for i in indicators if i['signal'] == 'bearish']
 
-    if total_score >= 0.4:
-        summary = f"{', '.join(bullish)}均看多，技术面强势"
-    elif total_score >= 0.15:
-        summary = f"{', '.join(bullish)}偏多，可关注"
-    elif total_score <= -0.4:
-        summary = f"{', '.join(bearish)}均看空，技术面弱势"
-    elif total_score <= -0.15:
-        summary = f"{', '.join(bearish)}偏空，需谨慎"
-    else:
-        summary = "多空分歧，方向不明"
+    # Generate summary with regime context
+    regime_cn = {
+        'strong_bull': '强势市场',
+        'bull': '多头市场',
+        'sideways': '震荡市场',
+        'bear': '空头市场',
+        'strong_bear': '弱势市场'
+    }.get(regime, '')
 
-    confidence = int(max(len(bullish), len(bearish)) / len(indicators) * 100)
+    if total_score >= 0.4:
+        summary = f"{regime_cn}，{', '.join(bullish[:3])}看多，技术面强势"
+    elif total_score >= 0.15:
+        summary = f"{regime_cn}，{', '.join(bullish[:3])}偏多"
+    elif total_score <= -0.4:
+        summary = f"{regime_cn}，{', '.join(bearish[:3])}看空，技术面弱势"
+    elif total_score <= -0.15:
+        summary = f"{regime_cn}，{', '.join(bearish[:3])}偏空"
+    else:
+        summary = f"{regime_cn}，多空分歧"
+
+    # Confidence based on signal agreement + regime confirmation
+    agreement_pct = max(len(bullish), len(bearish)) / len(indicators) * 100
+    regime_boost = 10 if (
+        (regime in ['strong_bull', 'bull'] and total_score > 0) or
+        (regime in ['strong_bear', 'bear'] and total_score < 0)
+    ) else 0
+    confidence = min(95, int(agreement_pct + regime_boost))
 
     return {
         'stock_code': stock_code,
@@ -605,8 +777,10 @@ def generate_signal(stock_code):
         'stop_loss': stop_info.get('stop_loss'),
         'take_profit': stop_info.get('take_profit'),
         'risk_info': stop_info.get('details', {}),
-        'ml_prediction': None,  # Loaded separately via /api/stock/<code>/ml/predict
-        'fundamental': None  # Loaded separately via /api/stock/<code>/fundamental
+        'market_regime': regime,
+        'regime_details': regime_info.get('details', {}),
+        'ml_prediction': None,
+        'fundamental': None
     }
 
 

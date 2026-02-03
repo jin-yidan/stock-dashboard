@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import DATABASE_PATH
 from services import db_service, data_service, signal_service, indicator_service
-from services import ml_service, fundamental_service, czsc_service
+from services import ml_service, fundamental_service, czsc_service, market_service
 
 app = Flask(__name__)
 
@@ -397,6 +397,42 @@ def api_compare(code1, code2):
         return jsonify({'error': 'Failed to fetch data'})
 
     return jsonify({'stock1': data1, 'stock2': data2})
+
+
+# Market Analysis APIs
+@app.route('/api/market/regime')
+def api_market_regime():
+    """Get current market regime (bull/bear/sideways)."""
+    regime = market_service.detect_market_regime()
+    return jsonify(regime)
+
+
+@app.route('/api/market/overview')
+def api_market_overview():
+    """Get comprehensive market overview."""
+    overview = market_service.get_market_overview()
+    return jsonify(overview)
+
+
+@app.route('/api/market/northbound')
+def api_northbound():
+    """Get northbound capital flow signal."""
+    signal = market_service.get_northbound_signal()
+    return jsonify(signal)
+
+
+@app.route('/api/market/breadth')
+def api_market_breadth():
+    """Get market breadth (advance/decline)."""
+    breadth = market_service.get_market_breadth()
+    return jsonify(breadth)
+
+
+@app.route('/api/stock/<code>/margin')
+def api_margin(code):
+    """Get margin trading signal for a stock."""
+    signal = market_service.get_margin_signal(code)
+    return jsonify(signal)
 
 
 # Feature 2: Sector Heat Map

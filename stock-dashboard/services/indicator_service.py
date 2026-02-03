@@ -126,8 +126,99 @@ def calculate_bollinger(df, period=20, std_dev=2):
 
     return df
 
+def calculate_adx(df, period=14):
+    """Calculate ADX (Average Directional Index) for trend strength."""
+    if df.empty or len(df) < period * 2:
+        return df
+    df = df.copy()
+
+    # True Range
+    high = df['high']
+    low = df['low']
+    close = df['close']
+    prev_close = close.shift(1)
+
+    tr = pd.concat([
+        high - low,
+        abs(high - prev_close),
+        abs(low - prev_close)
+    ], axis=1).max(axis=1)
+
+    # Directional Movement
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+
+    # Smoothed averages
+    atr = tr.rolling(window=period).mean()
+    plus_di = 100 * pd.Series(plus_dm).rolling(window=period).mean() / atr
+    minus_di = 100 * pd.Series(minus_dm).rolling(window=period).mean() / atr
+
+    # ADX
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+    df['adx'] = dx.rolling(window=period).mean()
+    df['plus_di'] = plus_di
+    df['minus_di'] = minus_di
+
+    return df
+
+
+def calculate_advanced_features(df):
+    """Calculate advanced features for ML and analysis."""
+    if df.empty or len(df) < 20:
+        return df
+    df = df.copy()
+
+    # Price patterns
+    df['gap'] = df['open'] / df['close'].shift(1) - 1  # Gap up/down
+    df['body_size'] = abs(df['close'] - df['open']) / df['open']
+    df['upper_shadow'] = (df['high'] - df[['open', 'close']].max(axis=1)) / df['open']
+    df['lower_shadow'] = (df[['open', 'close']].min(axis=1) - df['low']) / df['open']
+
+    # Trend strength
+    df['trend_strength'] = abs(df['close'] - df['close'].shift(20)) / df['close'].shift(20)
+
+    # Returns at different periods
+    df['ret_1d'] = df['close'].pct_change(1) * 100
+    df['ret_5d'] = df['close'].pct_change(5) * 100
+    df['ret_10d'] = df['close'].pct_change(10) * 100
+    df['ret_20d'] = df['close'].pct_change(20) * 100
+
+    # Volatility
+    df['volatility_20d'] = df['close'].pct_change().rolling(20).std() * np.sqrt(252) * 100
+
+    # Volume features
+    df['volume_trend'] = df['volume'].rolling(5).mean() / df['volume'].rolling(20).mean()
+    df['price_volume_corr'] = df['close'].pct_change().rolling(10).corr(
+        df['volume'].pct_change()
+    )
+
+    # Support/Resistance proximity
+    df['dist_to_high_20'] = (df['close'] / df['high'].rolling(20).max() - 1) * 100
+    df['dist_to_low_20'] = (df['close'] / df['low'].rolling(20).min() - 1) * 100
+
+    # 52-week high/low position
+    if len(df) >= 250:
+        high_52w = df['high'].rolling(250).max()
+        low_52w = df['low'].rolling(250).min()
+        df['position_52w'] = (df['close'] - low_52w) / (high_52w - low_52w) * 100
+
+    # Consecutive up/down days
+    df['up_day'] = (df['close'] > df['close'].shift(1)).astype(int)
+    df['consecutive_up'] = df['up_day'].groupby(
+        (df['up_day'] != df['up_day'].shift()).cumsum()
+    ).cumsum() * df['up_day']
+    df['consecutive_down'] = (1 - df['up_day']).groupby(
+        ((1 - df['up_day']) != (1 - df['up_day']).shift()).cumsum()
+    ).cumsum() * (1 - df['up_day'])
+
+    return df
+
+
 def calculate_all(df):
-    """Calculate all indicators."""
+    """Calculate all indicators including advanced features."""
     if df.empty:
         return df
     df = df.copy()
@@ -139,6 +230,8 @@ def calculate_all(df):
     df = calculate_kdj(df)
     df = calculate_bollinger(df)
     df = calculate_obv(df)
+    df = calculate_adx(df)
+    df = calculate_advanced_features(df)
     return df
 
 def get_ma_trend(df):
