@@ -162,24 +162,37 @@ h1, h2, h3 {
     border-color: #ccc;
 }
 
+/* Back Link */
+.back-link {
+    display: inline-block;
+    color: #666;
+    text-decoration: none;
+    font-size: 0.875rem;
+    padding: 0.25rem 0;
+    transition: color 0.15s;
+}
+
+.back-link:hover {
+    color: #1a1a1a;
+}
+
 /* Watchlist Grid */
 .watchlist-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 1px;
-    background: #e5e5e5;
-    border: 1px solid #e5e5e5;
-    border-radius: 8px;
-    overflow: hidden;
+    gap: 1rem;
 }
 
 .watchlist-card {
     position: relative;
     background: #fff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    transition: border-color 0.15s;
 }
 
 .watchlist-card:hover {
-    background: #f9f9f9;
+    border-color: #ccc;
 }
 
 .watchlist-card:hover .card-remove {
