@@ -134,45 +134,70 @@ def get_concept(stock_code):
     try:
         df = adata.stock.info.get_concept_east(stock_code=stock_code)
         if df is not None and not df.empty:
-            concepts = df['concept_name'].tolist()[:5]  # Top 5 concepts
+            # Column might be 'name' or 'concept_name' depending on adata version
+            col = 'name' if 'name' in df.columns else 'concept_name'
+            concepts = df[col].tolist()[:5]  # Top 5 concepts
             result = {'concepts': concepts}
             _set_cached(cache_key, result)
             return result
     except Exception as e:
-        print(f"Error getting concept for {stock_code}: {e}")
+        pass  # Silent fail - concepts are optional
 
     return {'concepts': []}
 
 
 def get_fundamental_summary(stock_code, current_price):
-    """Get comprehensive fundamental summary."""
+    """Get comprehensive fundamental summary.
+
+    Optimized to fetch all data in parallel.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     summary = {
         'stock_code': stock_code,
         'has_data': False
     }
 
-    # Market cap
-    market_cap = get_market_cap(stock_code, current_price)
-    if market_cap:
-        summary['market_cap_yi'] = market_cap['market_cap_yi']
-        summary['size'] = market_cap['size']
+    # Fetch all data in parallel
+    results = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(get_stock_shares, stock_code): 'shares',
+            executor.submit(get_dividend_info, stock_code): 'dividend',
+            executor.submit(get_industry, stock_code): 'industry',
+            executor.submit(get_concept, stock_code): 'concept',
+        }
+
+        for future in as_completed(futures, timeout=10):
+            name = futures[future]
+            try:
+                results[name] = future.result()
+            except Exception:
+                results[name] = None
+
+    # Market cap (uses shares result)
+    shares = results.get('shares')
+    if shares and shares.get('list_a_shares') and current_price > 0:
+        market_cap = shares['list_a_shares'] * current_price
+        summary['market_cap_yi'] = round(market_cap / 100000000, 1)
+        summary['size'] = 'large' if market_cap > 100000000000 else ('medium' if market_cap > 10000000000 else 'small')
         summary['has_data'] = True
 
     # Dividend
-    dividend = get_dividend_info(stock_code)
+    dividend = results.get('dividend')
     if dividend:
-        summary['has_dividend'] = dividend['has_dividend']
-        summary['dividend_count'] = dividend['recent_dividends']
+        summary['has_dividend'] = dividend.get('has_dividend', False)
+        summary['dividend_count'] = dividend.get('recent_dividends', 0)
 
     # Industry
-    industry = get_industry(stock_code)
+    industry = results.get('industry')
     if industry:
-        summary['industry'] = industry['industry_name']
+        summary['industry'] = industry.get('industry_name', '')
 
     # Concepts
-    concept = get_concept(stock_code)
+    concept = results.get('concept')
     if concept:
-        summary['concepts'] = concept['concepts']
+        summary['concepts'] = concept.get('concepts', [])
 
     return summary
 

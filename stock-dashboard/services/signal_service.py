@@ -1,4 +1,4 @@
-from services import data_service, indicator_service, ml_service, fundamental_service
+from services import data_service, indicator_service, ml_service, fundamental_service, czsc_service
 
 # IMPROVED weights based on backtesting analysis
 # Key findings:
@@ -6,17 +6,36 @@ from services import data_service, indicator_service, ml_service, fundamental_se
 # - Momentum after big moves: 66.7% accuracy
 # - Individual indicators ~50% but combinations help
 # - Strong signals (>0.4) work better: 56.7%
-WEIGHTS = {
+
+# Base weights (without CZSC)
+WEIGHTS_BASE = {
     'ma': 0.15,
     'macd': 0.15,
-    'momentum': 0.18,     # NEW: Price momentum (highest accuracy)
+    'momentum': 0.18,
     'kdj': 0.12,
     'bollinger': 0.10,
-    'rsi': 0.10,          # Reduced: only oversold works well
+    'rsi': 0.10,
     'volume': 0.08,
     'capital_flow': 0.08,
     'weekly': 0.04
 }
+
+# Weights with CZSC enabled (reduced proportionally to make room for CZSC)
+WEIGHTS_WITH_CZSC = {
+    'ma': 0.13,
+    'macd': 0.13,
+    'momentum': 0.15,
+    'kdj': 0.10,
+    'bollinger': 0.09,
+    'rsi': 0.09,
+    'volume': 0.07,
+    'capital_flow': 0.07,
+    'weekly': 0.04,
+    'czsc': 0.13
+}
+
+# Use appropriate weights based on CZSC availability
+WEIGHTS = WEIGHTS_WITH_CZSC if czsc_service.is_czsc_available() else WEIGHTS_BASE
 
 def analyze_ma(df):
     """Analyze MA trend."""
@@ -424,8 +443,63 @@ def analyze_weekly_trend(df):
         'plain_explanation': exp
     }
 
+
+def analyze_czsc(stock_code, df):
+    """Analyze using CZSC (Chan Theory) indicators."""
+    if not czsc_service.is_czsc_available():
+        return None  # Return None when CZSC not available
+
+    result = czsc_service.get_czsc_combined_signal(stock_code, df)
+
+    if not result.get('available'):
+        return {
+            'name': '缠论',
+            'signal': 'neutral',
+            'score': 0,
+            'weight': 0,  # Zero weight when unavailable
+            'weighted_score': 0,
+            'plain_explanation': result.get('error', '缠论分析不可用')
+        }
+
+    score = result.get('combined_score', 0)
+    bi_count = result.get('bi_count', 0)
+    bi_direction_cn = result.get('bi_direction_cn', '未知')
+    buy_point = result.get('buy_point_type')
+    sell_point = result.get('sell_point_type')
+
+    # Build explanation
+    if buy_point:
+        exp = f'{buy_point}，当前笔{bi_direction_cn}，共{bi_count}笔'
+    elif sell_point:
+        exp = f'{sell_point}，当前笔{bi_direction_cn}，共{bi_count}笔'
+    else:
+        exp = f'当前笔{bi_direction_cn}，共{bi_count}笔'
+
+    signal = 'bullish' if score > 0.1 else ('bearish' if score < -0.1 else 'neutral')
+
+    return {
+        'name': '缠论',
+        'signal': signal,
+        'score': score,
+        'weight': WEIGHTS.get('czsc', 0),
+        'weighted_score': score * WEIGHTS.get('czsc', 0),
+        'plain_explanation': exp,
+        'czsc_details': {
+            'bi_count': bi_count,
+            'bi_direction': result.get('bi_direction'),
+            'buy_point_type': buy_point,
+            'sell_point_type': sell_point,
+            'analysis': result.get('analysis', [])
+        }
+    }
+
 def generate_signal(stock_code):
-    """Generate comprehensive signal with all indicators."""
+    """Generate comprehensive signal with all indicators.
+
+    Optimized for speed - fundamental data is loaded separately via /api/stock/<code>/fundamental
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     df = data_service.get_stock_kline(stock_code)
 
     if df.empty:
@@ -443,21 +517,49 @@ def generate_signal(stock_code):
 
     df = indicator_service.calculate_all(df)
 
+    # Save to database in background (don't block)
     from services import db_service
-    db_service.save_daily_data(stock_code, df)
+    import threading
+    threading.Thread(target=db_service.save_daily_data, args=(stock_code, df), daemon=True).start()
 
-    # Analyze all indicators (momentum added based on backtesting)
+    # Analyze indicators that only need df (fast, no network)
     indicators = [
         analyze_ma(df),
         analyze_macd(df),
-        analyze_momentum(df),  # NEW: Price momentum
+        analyze_momentum(df),
         analyze_kdj(df),
         analyze_bollinger(df),
         analyze_rsi(df),
         analyze_volume(df),
-        analyze_capital_flow(stock_code),
         analyze_weekly_trend(df)
     ]
+
+    # Fetch capital flow in parallel with CZSC analysis
+    capital_result = None
+    czsc_result = None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {
+            executor.submit(analyze_capital_flow, stock_code): 'capital',
+        }
+        if czsc_service.is_czsc_available():
+            futures[executor.submit(analyze_czsc, stock_code, df)] = 'czsc'
+
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                result = future.result(timeout=5)
+                if name == 'capital':
+                    capital_result = result
+                elif name == 'czsc':
+                    czsc_result = result
+            except Exception:
+                pass
+
+    if capital_result:
+        indicators.append(capital_result)
+    if czsc_result:
+        indicators.append(czsc_result)
 
     total_score = sum(ind['weighted_score'] for ind in indicators)
 
@@ -465,7 +567,6 @@ def generate_signal(stock_code):
     stop_info = indicator_service.get_stop_loss_suggestion(df)
 
     # IMPROVED: Higher thresholds based on backtesting
-    # Strong signals (>0.4) had 56.7% accuracy vs 50% for weaker signals
     if total_score >= 0.35:
         signal, signal_cn = 'strong_buy', '强烈看多'
     elif total_score >= 0.18:
@@ -493,33 +594,6 @@ def generate_signal(stock_code):
 
     confidence = int(max(len(bullish), len(bearish)) / len(indicators) * 100)
 
-    # Get ML prediction if available
-    ml_prediction = None
-    try:
-        ml_result, ml_error = ml_service.predict(stock_code, df)
-        if ml_result is None:
-            ml_result, ml_error = ml_service.predict_with_general_model(df)
-        if ml_result:
-            ml_prediction = ml_result
-    except Exception as e:
-        pass
-
-    # Get fundamental data
-    fundamental = None
-    try:
-        quote = data_service.get_realtime_quote(stock_code)
-        price = quote.get('price', 0) if quote else df.iloc[-1]['close']
-        fund_summary = fundamental_service.get_fundamental_summary(stock_code, price)
-        fund_score = fundamental_service.get_fundamental_score(stock_code, price)
-        if fund_summary.get('has_data'):
-            fundamental = {
-                **fund_summary,
-                'score': fund_score['score'],
-                'reasons': fund_score['reasons']
-            }
-    except Exception as e:
-        pass
-
     return {
         'stock_code': stock_code,
         'signal': signal,
@@ -531,8 +605,8 @@ def generate_signal(stock_code):
         'stop_loss': stop_info.get('stop_loss'),
         'take_profit': stop_info.get('take_profit'),
         'risk_info': stop_info.get('details', {}),
-        'ml_prediction': ml_prediction,
-        'fundamental': fundamental
+        'ml_prediction': None,  # Loaded separately via /api/stock/<code>/ml/predict
+        'fundamental': None  # Loaded separately via /api/stock/<code>/fundamental
     }
 
 

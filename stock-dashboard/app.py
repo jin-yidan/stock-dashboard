@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import DATABASE_PATH
 from services import db_service, data_service, signal_service, indicator_service
-from services import ml_service, fundamental_service
+from services import ml_service, fundamental_service, czsc_service
 
 app = Flask(__name__)
 
@@ -56,6 +56,21 @@ def api_stock_info(code):
     """Get basic stock info quickly."""
     name = data_service.get_stock_name(code)
     return jsonify({'stock_code': code, 'short_name': name})
+
+
+@app.route('/api/stock/<code>/preload')
+def api_preload(code):
+    """Preload stock data in background (call on hover)."""
+    import threading
+
+    def _preload():
+        try:
+            data_service.get_stock_kline(code)
+        except Exception:
+            pass
+
+    threading.Thread(target=_preload, daemon=True).start()
+    return jsonify({'status': 'loading'})
 
 
 @app.route('/api/stock/<code>/quote')
@@ -238,6 +253,76 @@ def api_ml_info():
     """Get ML model information."""
     info = ml_service.get_model_info()
     return jsonify(info)
+
+
+# CZSC (Chan Theory) API Endpoints
+@app.route('/api/czsc/status')
+def api_czsc_status():
+    """Check CZSC availability and version."""
+    return jsonify(czsc_service.get_czsc_status())
+
+
+@app.route('/api/stock/<code>/czsc')
+def api_czsc_combined(code):
+    """Get combined CZSC analysis for a stock."""
+    if not czsc_service.is_czsc_available():
+        return jsonify({
+            'available': False,
+            'error': 'CZSC library not installed'
+        })
+
+    df = data_service.get_stock_kline(code, days=200)
+    if df.empty:
+        return jsonify({
+            'available': False,
+            'error': 'No stock data available'
+        })
+
+    df = indicator_service.calculate_all(df)
+    result = czsc_service.get_czsc_combined_signal(code, df)
+    return jsonify(result)
+
+
+@app.route('/api/stock/<code>/czsc/chan')
+def api_czsc_chan(code):
+    """Get detailed Chan analysis (strokes, fractals)."""
+    if not czsc_service.is_czsc_available():
+        return jsonify({
+            'has_data': False,
+            'error': 'CZSC library not installed'
+        })
+
+    df = data_service.get_stock_kline(code, days=200)
+    if df.empty:
+        return jsonify({
+            'has_data': False,
+            'error': 'No stock data available'
+        })
+
+    analyzer = czsc_service.CzscAnalyzer(code, df)
+    result = analyzer.get_chan_analysis()
+    return jsonify(result)
+
+
+@app.route('/api/stock/<code>/czsc/signals')
+def api_czsc_signals(code):
+    """Get CZSC technical signals."""
+    if not czsc_service.is_czsc_available():
+        return jsonify({
+            'has_data': False,
+            'error': 'CZSC library not installed'
+        })
+
+    df = data_service.get_stock_kline(code, days=200)
+    if df.empty:
+        return jsonify({
+            'has_data': False,
+            'error': 'No stock data available'
+        })
+
+    analyzer = czsc_service.CzscAnalyzer(code, df)
+    result = analyzer.get_technical_signals()
+    return jsonify(result)
 
 
 if __name__ == '__main__':

@@ -7,7 +7,7 @@ from services import db_service
 # Simple in-memory cache
 _cache = {}
 _cache_time = {}
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 1800  # 30 minutes - kline data doesn't change frequently
 
 def _get_cached(key):
     """Get cached value if not expired."""
@@ -80,56 +80,16 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
         return pd.DataFrame()
 
 def get_realtime_quote(stock_code):
-    """Get realtime quote for a stock."""
+    """Get realtime quote for a stock.
+
+    Optimized: Uses kline data directly instead of slow list_market_current API.
+    """
     cache_key = f"quote_{stock_code}"
     cached = _get_cached(cache_key)
     if cached is not None:
         return cached
 
-    try:
-        df = adata.stock.market.list_market_current(code_list=[stock_code])
-        if df is not None and not df.empty:
-            row = df.iloc[0]
-            price = float(row.get('price', 0) or 0)
-            change_pct = float(row.get('change_pct', 0) or 0)
-
-            # Get additional data from kline for open/high/low
-            kline = get_stock_kline(stock_code, days=2)
-            if not kline.empty:
-                latest = kline.iloc[-1]
-                prev = kline.iloc[-2] if len(kline) > 1 else latest
-                result = {
-                    'stock_code': stock_code,
-                    'price': price if price > 0 else float(latest.get('close', 0)),
-                    'change_pct': change_pct,
-                    'open': float(latest.get('open', 0)),
-                    'high': float(latest.get('high', 0)),
-                    'low': float(latest.get('low', 0)),
-                    'volume': int(row.get('volume', 0) or latest.get('volume', 0) or 0),
-                    'amount': float(row.get('amount', 0) or latest.get('amount', 0) or 0),
-                    'pre_close': float(prev.get('close', 0))
-                }
-                _set_cached(cache_key, result)
-                return result
-
-            result = {
-                'stock_code': stock_code,
-                'price': price,
-                'change_pct': change_pct,
-                'open': 0,
-                'high': 0,
-                'low': 0,
-                'volume': int(row.get('volume', 0) or 0),
-                'amount': float(row.get('amount', 0) or 0),
-                'pre_close': 0
-            }
-            _set_cached(cache_key, result)
-            return result
-
-    except Exception as e:
-        print(f"Error fetching realtime quote for {stock_code}: {e}")
-
-    # Fallback to kline data
+    # Use kline data directly - it's faster and already has all the data we need
     return _get_quote_from_kline(stock_code)
 
 def _get_quote_from_kline(stock_code):

@@ -1,33 +1,29 @@
 {% extends "base.html" %}
 
 {% block content %}
-<!-- Search Section -->
-<div class="search-section">
-    <div class="container">
-        <form onsubmit="return go()" class="search-form">
-            <div class="search-box">
-                <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                </svg>
-                <input type="text" id="code" class="search-input" placeholder="搜索股票代码或名称" autofocus>
-            </div>
+<!-- Main Content -->
+<div class="main-container">
+    <!-- Search -->
+    <div class="search-wrapper">
+        <form onsubmit="return go()">
+            <input type="text" id="code" class="main-search" placeholder="输入股票代码或名称，如 600519 或 茅台" autofocus>
         </form>
-        <div id="hero-search-results" class="hero-results"></div>
+        <div id="hero-search-results" class="search-dropdown"></div>
     </div>
-</div>
 
-<!-- Watchlist Section -->
-<div class="container watchlist-section">
-    <div class="section-header">
-        <span class="section-title">自选股</span>
-        <button class="btn-add-stock" onclick="showAddModal()">+ 添加</button>
+    <!-- Watchlist -->
+    <div class="watchlist-wrapper">
+        <div class="watchlist-header">
+            <h2>自选股</h2>
+            <button class="add-btn" onclick="showAddModal()">+ 添加</button>
+        </div>
+        <div id="watchlist" class="stock-list">
+            <!-- Populated by JS -->
+        </div>
+        <p id="empty-msg" class="empty-hint" style="display:none;">
+            暂无自选股，点击"添加"按钮添加
+        </p>
     </div>
-    <div id="watchlist" class="watchlist-grid">
-        <!-- Populated by JS -->
-    </div>
-    <p id="empty-msg" class="empty-message" style="display:none;">
-        点击上方"添加"按钮添加自选股
-    </p>
 </div>
 
 <!-- Add Stock Modal -->
@@ -181,16 +177,14 @@ function renderWatchlist() {
         const cached = getCachedQuote(s.code);
         const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
         return `
-            <div class="watchlist-card" id="stock-${s.code}" onmouseenter="preloadStock('${s.code}')">
-                <a href="/stock/${s.code}" class="card-link">
-                    <div class="card-header">
-                        <span class="card-name">${s.name}</span>
-                        <span class="card-code">${s.code}</span>
-                    </div>
-                    <div class="card-quote" id="quote-${s.code}">${quoteHtml}</div>
-                </a>
-                <button class="card-remove" onclick="event.preventDefault();removeFromWatchlist('${s.code}')" title="移除">×</button>
-            </div>
+            <a href="/stock/${s.code}" class="stock-item" id="stock-${s.code}" onmouseenter="preloadStock('${s.code}')">
+                <div class="stock-info">
+                    <span class="stock-name">${s.name}</span>
+                    <span class="stock-code">${s.code}</span>
+                </div>
+                <div class="stock-price" id="quote-${s.code}">${quoteHtml}</div>
+                <button class="remove-btn" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${s.code}')" title="移除">×</button>
+            </a>
         `;
     }).join('');
 
@@ -235,25 +229,24 @@ function addStockElement(code, name, prepend = false) {
     const cached = getCachedQuote(code);
     const quoteHtml = cached ? renderQuoteHtml(cached) : '<span class="quote-loading">--</span>';
 
-    const div = document.createElement('div');
-    div.className = 'watchlist-card';
-    div.id = 'stock-' + code;
-    div.onmouseenter = () => preloadStock(code);
-    div.innerHTML = `
-        <a href="/stock/${code}" class="card-link">
-            <div class="card-header">
-                <span class="card-name">${name}</span>
-                <span class="card-code">${code}</span>
-            </div>
-            <div class="card-quote" id="quote-${code}">${quoteHtml}</div>
-        </a>
-        <button class="card-remove" onclick="event.preventDefault();removeFromWatchlist('${code}')" title="移除">×</button>
+    const a = document.createElement('a');
+    a.href = '/stock/' + code;
+    a.className = 'stock-item';
+    a.id = 'stock-' + code;
+    a.onmouseenter = () => preloadStock(code);
+    a.innerHTML = `
+        <div class="stock-info">
+            <span class="stock-name">${name}</span>
+            <span class="stock-code">${code}</span>
+        </div>
+        <div class="stock-price" id="quote-${code}">${quoteHtml}</div>
+        <button class="remove-btn" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${code}')" title="移除">×</button>
     `;
 
     if (prepend && container.firstChild) {
-        container.insertBefore(div, container.firstChild);
+        container.insertBefore(a, container.firstChild);
     } else {
-        container.appendChild(div);
+        container.appendChild(a);
     }
 
     // Load fresh quote
@@ -342,7 +335,31 @@ document.getElementById('add-modal').addEventListener('click', e => {
     if (e.target.id === 'add-modal') hideAddModal();
 });
 
+// Auto-refresh quotes every 30 seconds during market hours
+function isMarketHours() {
+    const now = new Date();
+    const day = now.getDay();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    // Monday-Friday, 9:30-15:00 China time
+    if (day === 0 || day === 6) return false;
+    const time = hour * 100 + minute;
+    return (time >= 930 && time <= 1130) || (time >= 1300 && time <= 1500);
+}
+
+function startAutoRefresh() {
+    if (isMarketHours()) {
+        setInterval(() => {
+            const list = getWatchlist();
+            if (list.length > 0) {
+                loadWatchlistQuotes(list);
+            }
+        }, 30000); // Refresh every 30 seconds
+    }
+}
+
 // Initialize
 renderWatchlist();
+startAutoRefresh();
 </script>
 {% endblock %}
