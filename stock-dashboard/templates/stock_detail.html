@@ -85,8 +85,8 @@
                 <button class="modal-close" onclick="hideApiKeyModal()">&times;</button>
             </div>
             <div class="modal-body">
-                <p class="modal-note">支持 OpenAI、Claude 等兼容 API</p>
-                <input type="text" id="api-key-input" placeholder="输入 API Key" class="api-key-input">
+                <p class="modal-note">火山引擎格式: apikey:ep-xxx</p>
+                <input type="text" id="api-key-input" placeholder="apikey:endpoint" class="api-key-input">
                 <div class="modal-actions">
                     <button class="btn-save" onclick="saveApiKey()">保存</button>
                     <button class="btn-clear" onclick="clearApiKey()">清除</button>
@@ -304,19 +304,6 @@
                     <tr><td><span class="skeleton skeleton-text"></span></td><td><span class="skeleton skeleton-text"></span></td><td><span class="skeleton skeleton-text"></span></td></tr>
                 </tbody>
             </table>
-        </div>
-    </div>
-
-    <!-- Backtest -->
-    <div class="row mt-5">
-        <div class="col-12">
-            <div class="backtest-section">
-                <div class="d-flex align-items-center mb-3">
-                    <span class="section-title-header me-3" style="margin-bottom:0;">历史回测</span>
-                    <button id="backtest-btn" class="btn-add" onclick="loadBacktest()">查看准确率</button>
-                </div>
-                <div id="backtest-result" style="display:none;"></div>
-            </div>
         </div>
     </div>
 
@@ -648,47 +635,6 @@ function loadQuoteData() {
         .catch(err => {
             console.error('Error loading quote:', err);
             document.getElementById('price-section').innerHTML = '<div class="text-secondary">行情获取失败</div>';
-        });
-}
-
-// Load backtest data
-function loadBacktest() {
-    const btn = document.getElementById('backtest-btn');
-    const result = document.getElementById('backtest-result');
-    btn.textContent = '加载中...';
-    btn.disabled = true;
-
-    fetch('/api/stock/' + stockCode + '/backtest?days=60')
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                result.innerHTML = '<p class="text-secondary">数据不足，无法回测</p>';
-            } else {
-                result.innerHTML = `
-                    <div class="backtest-stats">
-                        <div class="backtest-item">
-                            <span class="backtest-label">买入信号</span>
-                            <span class="backtest-value">${data.buy_signals}次</span>
-                            <span class="backtest-detail">准确率 ${data.buy_accuracy}%，平均收益 ${data.buy_avg_return > 0 ? '+' : ''}${data.buy_avg_return}%</span>
-                        </div>
-                        <div class="backtest-item">
-                            <span class="backtest-label">卖出信号</span>
-                            <span class="backtest-value">${data.sell_signals}次</span>
-                            <span class="backtest-detail">准确率 ${data.sell_accuracy}%，平均收益 ${data.sell_avg_return > 0 ? '+' : ''}${data.sell_avg_return}%</span>
-                        </div>
-                    </div>
-                    <p class="text-secondary small mt-2">基于过去${data.period}的历史数据回测，5日收益率判定</p>
-                `;
-            }
-            result.style.display = 'block';
-            btn.style.display = 'none';
-        })
-        .catch(err => {
-            console.error('Error loading backtest:', err);
-            result.innerHTML = '<p class="text-secondary">回测加载失败</p>';
-            result.style.display = 'block';
-            btn.textContent = '重试';
-            btn.disabled = false;
         });
 }
 
