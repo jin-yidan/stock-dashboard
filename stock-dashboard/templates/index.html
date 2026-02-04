@@ -117,7 +117,7 @@ codeInput.addEventListener('input', function() {
     }
 
     heroSearchTimeout = setTimeout(() => {
-        fetchWithTimeout('/api/search?q=' + encodeURIComponent(q), {}, 5000)
+        fetchWithTimeout('/api/search?q=' + encodeURIComponent(q), {}, 30000)
             .then(r => r.json())
             .then(data => {
                 if (data.length === 0) {
@@ -405,7 +405,7 @@ function searchStocks() {
         return;
     }
     searchTimeout = setTimeout(() => {
-        fetchWithTimeout('/api/search?q=' + encodeURIComponent(q), {}, 5000)
+        fetchWithTimeout('/api/search?q=' + encodeURIComponent(q), {}, 30000)
             .then(r => r.json())
             .then(data => {
                 const html = data.map(s => {
