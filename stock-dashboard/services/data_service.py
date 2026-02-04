@@ -1,8 +1,15 @@
-import adata
 import pandas as pd
 from datetime import datetime, timedelta
 from config import DEFAULT_KLINE_DAYS
 from services import db_service
+
+# Try to import adata - may not be available on Vercel
+try:
+    import adata
+    HAS_ADATA = True
+except ImportError:
+    HAS_ADATA = False
+    print("Warning: adata not available, using fallback data")
 
 # Simple in-memory cache
 _cache = {}
@@ -23,6 +30,8 @@ def _set_cached(key, value):
 
 def get_all_stocks():
     """Get list of all A-share stocks."""
+    if not HAS_ADATA:
+        return [{'stock_code': c[0], 'short_name': c[1], 'exchange': ''} for c in POPULAR_STOCKS]
     try:
         df = adata.stock.info.all_code()
         stocks = []
@@ -46,6 +55,9 @@ def get_all_stocks():
 
 def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
     """Get historical K-line data for a stock using baidu_market API."""
+    if not HAS_ADATA:
+        return pd.DataFrame()
+
     cache_key = f"kline_{stock_code}_{days}"
     cached = _get_cached(cache_key)
     if cached is not None:
@@ -122,6 +134,9 @@ def _get_quote_from_kline(stock_code):
 
 def get_capital_flow(stock_code, days=5):
     """Get capital flow data for a stock."""
+    if not HAS_ADATA:
+        return []
+
     cache_key = f"capital_{stock_code}_{days}"
     cached = _get_cached(cache_key)
     if cached is not None:
@@ -172,6 +187,8 @@ def init_stock_list():
             # Save popular stocks first
             for code, name in POPULAR_STOCKS:
                 db_service.save_stock_info(code, name, '')
+            if not HAS_ADATA:
+                return
             # Then load full list
             df = adata.stock.info.all_code()
             if df is not None and not df.empty:
@@ -205,30 +222,31 @@ def get_stock_name(stock_code):
         _set_cached(cache_key, name)
         return name
 
-    # Check current market data
-    try:
-        df = adata.stock.market.list_market_current(code_list=[stock_code])
-        if df is not None and not df.empty:
-            name = df.iloc[0].get('short_name', '')
-            if name:
-                db_service.save_stock_info(stock_code, name, '')
+    if HAS_ADATA:
+        # Check current market data
+        try:
+            df = adata.stock.market.list_market_current(code_list=[stock_code])
+            if df is not None and not df.empty:
+                name = df.iloc[0].get('short_name', '')
+                if name:
+                    db_service.save_stock_info(stock_code, name, '')
+                    _set_cached(cache_key, name)
+                    return name
+        except Exception as e:
+            print(f"Error from list_market_current: {e}")
+
+        # Fetch from all_code (slower but comprehensive)
+        try:
+            df = adata.stock.info.all_code()
+            match = df[df['stock_code'] == stock_code]
+            if not match.empty:
+                name = match.iloc[0].get('short_name', '')
+                exchange = match.iloc[0].get('exchange', '')
+                db_service.save_stock_info(stock_code, name, exchange)
                 _set_cached(cache_key, name)
                 return name
-    except Exception as e:
-        print(f"Error from list_market_current: {e}")
-
-    # Fetch from all_code (slower but comprehensive)
-    try:
-        df = adata.stock.info.all_code()
-        match = df[df['stock_code'] == stock_code]
-        if not match.empty:
-            name = match.iloc[0].get('short_name', '')
-            exchange = match.iloc[0].get('exchange', '')
-            db_service.save_stock_info(stock_code, name, exchange)
-            _set_cached(cache_key, name)
-            return name
-    except Exception as e:
-        print(f"Error getting stock name from all_code: {e}")
+        except Exception as e:
+            print(f"Error getting stock name from all_code: {e}")
 
     _set_cached(cache_key, stock_code)
     return stock_code
@@ -242,6 +260,13 @@ def search_stocks(query, limit=10):
                 for r in db_results[:limit]]
 
     # Fallback to API (slow, but populates database)
+    if not HAS_ADATA:
+        # Return matching popular stocks as fallback
+        query_upper = query.upper()
+        return [{'stock_code': c[0], 'short_name': c[1]}
+                for c in POPULAR_STOCKS
+                if query_upper in c[0] or query in c[1]][:limit]
+
     cache_key = f"search_{query}_{limit}"
     cached = _get_cached(cache_key)
     if cached is not None:
@@ -286,6 +311,9 @@ def get_index_quotes():
         {'code': '399001', 'name': '深证成指'},
         {'code': '399006', 'name': '创业板指'}
     ]
+
+    if not HAS_ADATA:
+        return [{'code': i['code'], 'name': i['name'], 'price': 0, 'change_pct': 0} for i in indices]
 
     results = []
     for idx in indices:

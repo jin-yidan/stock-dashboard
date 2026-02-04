@@ -3,10 +3,15 @@ Market regime detection and market-wide signals.
 Provides context for individual stock analysis.
 """
 
-import adata
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+
+try:
+    import adata
+    HAS_ADATA = True
+except ImportError:
+    HAS_ADATA = False
 
 # Cache
 _cache = {}
@@ -28,6 +33,9 @@ def _set_cached(key, value):
 
 def get_index_data(index_code='000001', days=60):
     """Get index historical data (default: Shanghai Composite)."""
+    if not HAS_ADATA:
+        return pd.DataFrame()
+
     cache_key = f"index_{index_code}_{days}"
     cached = _get_cached(cache_key)
     if cached is not None:
@@ -299,6 +307,9 @@ def get_northbound_signal():
 
 def get_margin_data(stock_code, days=20):
     """Get margin trading data for a stock (融资融券)."""
+    if not HAS_ADATA:
+        return pd.DataFrame()
+
     cache_key = f"margin_{stock_code}_{days}"
     cached = _get_cached(cache_key)
     if cached is not None:
@@ -385,6 +396,9 @@ def get_market_breadth():
     Calculate market breadth - how many stocks are rising vs falling.
     Good for confirming market direction.
     """
+    if not HAS_ADATA:
+        return {'score': 0, 'rising': 0, 'falling': 0, 'total': 0}
+
     cache_key = "market_breadth"
     cached = _get_cached(cache_key)
     if cached is not None:

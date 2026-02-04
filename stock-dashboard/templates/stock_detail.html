@@ -729,13 +729,15 @@ function renderKlineChart(data) {
                 const kline = params.find(p => p.seriesName === 'K线');
                 if (!kline) return '';
                 // Data can be array or object with value property
+                // ECharts format: [open, close, low, high]
                 const d = kline.data.value || kline.data;
                 if (!d || !Array.isArray(d)) return '';
+                // Display in traditional OHLC order (开高低收)
                 return `${kline.axisValue}<br/>
-                    开: ${d[0]}<br/>
-                    收: ${d[1]}<br/>
-                    低: ${d[2]}<br/>
-                    高: ${d[3]}`;
+                    开盘: ${d[0]}<br/>
+                    最高: ${d[3]}<br/>
+                    最低: ${d[2]}<br/>
+                    收盘: ${d[1]}`;
             }
         },
         legend: {

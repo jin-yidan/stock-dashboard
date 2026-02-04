@@ -3,10 +3,15 @@ Fundamental data service.
 Provides basic fundamental analysis using available data.
 """
 
-import adata
 import pandas as pd
 from datetime import datetime
 from services import db_service
+
+try:
+    import adata
+    HAS_ADATA = True
+except ImportError:
+    HAS_ADATA = False
 
 # Cache
 _cache = {}
@@ -28,6 +33,9 @@ def _set_cached(key, value):
 
 def get_stock_shares(stock_code):
     """Get total shares for a stock."""
+    if not HAS_ADATA:
+        return None
+
     cache_key = f"shares_{stock_code}"
     cached = _get_cached(cache_key)
     if cached:
@@ -54,6 +62,9 @@ def get_stock_shares(stock_code):
 
 def get_dividend_info(stock_code):
     """Get dividend information."""
+    if not HAS_ADATA:
+        return {'has_dividend': False, 'recent_dividends': 0, 'total_dividends': 0}
+
     cache_key = f"dividend_{stock_code}"
     cached = _get_cached(cache_key)
     if cached:
@@ -103,6 +114,9 @@ def get_market_cap(stock_code, current_price):
 
 def get_industry(stock_code):
     """Get stock industry classification."""
+    if not HAS_ADATA:
+        return None
+
     cache_key = f"industry_{stock_code}"
     cached = _get_cached(cache_key)
     if cached:
@@ -126,6 +140,9 @@ def get_industry(stock_code):
 
 def get_concept(stock_code):
     """Get stock concepts/themes."""
+    if not HAS_ADATA:
+        return {'concepts': []}
+
     cache_key = f"concept_{stock_code}"
     cached = _get_cached(cache_key)
     if cached:
