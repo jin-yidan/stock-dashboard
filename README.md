@@ -12,11 +12,6 @@ This dashboard helps you analyze Chinese stocks with:
 - **AI Analysis** - Optional Claude-powered stock analysis
 - **Watchlist** - Save your favorite stocks locally
 
-## Screenshots
-
-<!-- Add your screenshots here -->
-![Main Dashboard](screenshots/dashboard.png)
-
 ## Quick Start
 
 ```bash
