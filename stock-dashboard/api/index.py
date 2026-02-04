@@ -5,9 +5,13 @@ import sys
 import os
 
 # Add parent directory to path so we can import app
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
+# Set working directory for templates/static
+os.chdir(parent_dir)
 
 from app import app
 
-# Vercel expects the app to be named 'app' or 'application'
+# Vercel expects 'app' or 'application'
 application = app

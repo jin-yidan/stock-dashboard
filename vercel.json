@@ -2,18 +2,18 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
+      "src": "stock-dashboard/api/index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/static/(.*)",
-      "dest": "/static/$1"
+      "dest": "/stock-dashboard/static/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/api/index.py"
+      "dest": "/stock-dashboard/api/index.py"
     }
   ]
 }
