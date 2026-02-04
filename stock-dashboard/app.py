@@ -57,8 +57,11 @@ def stock_detail(code):
 def api_signal(code):
     """API endpoint for signal data."""
     code = require_valid_code(code)
-    signal_data = signal_service.generate_signal(code)
-    return jsonify(signal_data)
+    try:
+        signal_data = signal_service.generate_signal(code)
+        return jsonify(signal_data)
+    except Exception as e:
+        return jsonify({'error': str(e), 'signal': 'neutral', 'score': 0})
 
 
 @app.route('/api/search')
@@ -100,10 +103,13 @@ def api_preload(code):
 def api_quote(code):
     """Get realtime quote."""
     code = require_valid_code(code)
-    quote = data_service.get_realtime_quote(code)
-    if quote:
-        return jsonify(quote)
-    return jsonify({'error': 'No data'})
+    try:
+        quote = data_service.get_realtime_quote(code)
+        if quote:
+            return jsonify(quote)
+        return jsonify({'error': 'No data'})
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 
 @app.route('/api/quotes/batch')
@@ -255,13 +261,31 @@ def safe_round(val, decimals=2):
     return round(val, decimals)
 
 
+@app.route('/api/stock/<code>/debug-kline')
+def api_debug_kline(code):
+    """DEBUG: Show raw kline data - visit /api/stock/000001/debug-kline in browser."""
+    code = require_valid_code(code)
+    df = data_service.get_stock_kline(code, days=5)
+    if df.empty:
+        return jsonify({'error': 'No data'})
+    result = {'columns': list(df.columns), 'rows': []}
+    for i in range(min(3, len(df))):
+        row = df.iloc[-(i+1)]
+        row_data = {col: str(row.get(col)) for col in df.columns}
+        result['rows'].append(row_data)
+    return jsonify(result)
+
 @app.route('/api/stock/<code>/kline')
 def api_kline(code):
     """Get K-line data for charting."""
     code = require_valid_code(code)
     import math
     days = min(request.args.get('days', 60, type=int), 500)  # Cap at 500 days
-    df = data_service.get_stock_kline(code, days=days)
+
+    try:
+        df = data_service.get_stock_kline(code, days=days)
+    except Exception as e:
+        return jsonify({'error': f'Failed to fetch data: {str(e)}'})
 
     if df.empty:
         return jsonify({'error': 'No data'})
@@ -286,19 +310,54 @@ def api_kline(code):
             change_pct = 0
         is_up = change_pct >= 0
 
-        # K-line with color based on daily change_pct (not close vs open)
-        # Ensure low <= high (adata sometimes returns them swapped)
-        raw_low = row['low']
-        raw_high = row['high']
-        actual_low = min(raw_low, raw_high)
-        actual_high = max(raw_low, raw_high)
+        # K-line: scan ALL columns to find actual OHLC price values
+        # The API sometimes returns columns misaligned
+
+        # Collect all numeric values from the row
+        all_values = []
+        for col in ['open', 'close', 'high', 'low', 'pre_close']:
+            try:
+                v = float(row.get(col, 0))
+                if v > 0:
+                    all_values.append(v)
+            except:
+                pass
+
+        # Find price-like values (cluster of similar values, typically 4+ values within 30% of each other)
+        if len(all_values) >= 2:
+            # Use the median as reference (more robust than any single value)
+            sorted_vals = sorted(all_values)
+            median_val = sorted_vals[len(sorted_vals) // 2]
+
+            # Filter to values within 30% of median (valid prices for a single day)
+            price_vals = [v for v in all_values if 0.7 <= v / median_val <= 1.3]
+
+            if len(price_vals) >= 2:
+                display_open = price_vals[0]  # First valid price as open
+                display_close = float(row.get('close', price_vals[-1]))
+                # Validate close
+                if not (0.7 <= display_close / median_val <= 1.3):
+                    display_close = price_vals[-1]
+                display_low = min(price_vals)
+                display_high = max(price_vals)
+            else:
+                # Fallback: use close for everything
+                display_close = float(row.get('close', 0)) or median_val
+                display_open = display_close
+                display_low = display_close
+                display_high = display_close
+        else:
+            # No valid prices found
+            display_open = display_close = display_low = display_high = 0
+
+        raw_close = display_close
 
         kline_data.append({
             'value': [
-                safe_round(row['open']),
-                safe_round(row['close']),
-                safe_round(actual_low),
-                safe_round(actual_high)
+                safe_round(display_open),
+                safe_round(raw_close),
+                safe_round(display_low),
+                safe_round(display_high)
             ],
             'itemStyle': {
                 'color': '#ef5350' if is_up else '#26a69a',

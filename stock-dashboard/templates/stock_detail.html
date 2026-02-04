@@ -732,11 +732,14 @@ function renderKlineChart(data) {
                 // ECharts format: [open, close, low, high]
                 const d = kline.data.value || kline.data;
                 if (!d || !Array.isArray(d)) return '';
+                // Fix swapped high/low at display time
+                const low = Math.min(d[2], d[3]);
+                const high = Math.max(d[2], d[3]);
                 // Display in traditional OHLC order (开高低收)
                 return `${kline.axisValue}<br/>
                     开盘: ${d[0]}<br/>
-                    最高: ${d[3]}<br/>
-                    最低: ${d[2]}<br/>
+                    最高: ${high}<br/>
+                    最低: ${low}<br/>
                     收盘: ${d[1]}`;
             }
         },

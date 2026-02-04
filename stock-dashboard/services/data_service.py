@@ -54,7 +54,7 @@ def get_all_stocks():
         return []
 
 def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
-    """Get historical K-line data for a stock using baidu_market API."""
+    """Get historical K-line data for a stock using East Money API."""
     if not HAS_ADATA:
         return pd.DataFrame()
 
@@ -64,7 +64,7 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
         return cached
 
     try:
-        # Use baidu_market which is more reliable
+        # Use baidu_market
         df = adata.stock.market.baidu_market.get_market(stock_code=stock_code)
 
         if df is None or df.empty:
