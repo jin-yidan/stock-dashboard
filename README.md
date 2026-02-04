@@ -19,7 +19,7 @@ A modern technical analysis tool for Chinese A-share stocks.
 <img width="1512" height="982" alt="Screenshot 2026-02-04 at 12 24 27" src="https://github.com/user-attachments/assets/b91f12d9-9e69-4ca2-be33-07298ff783f6" />
 <img width="1512" height="982" alt="Screenshot 2026-02-04 at 12 24 42" src="https://github.com/user-attachments/assets/e2643beb-f48c-4df7-8edf-8b63ed6779d3" />
 
-
+(截图仅展示了部分功能）
 
 ## What It Does
 
