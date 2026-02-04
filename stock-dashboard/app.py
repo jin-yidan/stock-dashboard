@@ -265,15 +265,37 @@ def safe_round(val, decimals=2):
 def api_debug_kline(code):
     """DEBUG: Show raw kline data - visit /api/stock/000001/debug-kline in browser."""
     code = require_valid_code(code)
-    df = data_service.get_stock_kline(code, days=5)
-    if df.empty:
-        return jsonify({'error': 'No data'})
-    result = {'columns': list(df.columns), 'rows': []}
-    for i in range(min(3, len(df))):
-        row = df.iloc[-(i+1)]
-        row_data = {col: str(row.get(col)) for col in df.columns}
-        result['rows'].append(row_data)
-    return jsonify(result)
+    results = {'code': code, 'attempts': []}
+
+    # Try east_market first
+    try:
+        import adata
+        raw_df = adata.stock.market.east_market.get_market(stock_code=code)
+        if raw_df is not None and not raw_df.empty:
+            results['success'] = 'east_market'
+            results['columns'] = list(raw_df.columns)
+            results['num_rows'] = len(raw_df)
+            results['last_row'] = {col: str(raw_df.iloc[-1].get(col)) for col in raw_df.columns}
+            return jsonify(results)
+        results['attempts'].append({'api': 'east_market', 'error': 'empty data'})
+    except Exception as e:
+        results['attempts'].append({'api': 'east_market', 'error': str(e)})
+
+    # Try baidu_market as fallback
+    try:
+        raw_df = adata.stock.market.baidu_market.get_market(stock_code=code)
+        if raw_df is not None and not raw_df.empty:
+            results['success'] = 'baidu_market'
+            results['columns'] = list(raw_df.columns)
+            results['num_rows'] = len(raw_df)
+            results['last_row'] = {col: str(raw_df.iloc[-1].get(col)) for col in raw_df.columns}
+            return jsonify(results)
+        results['attempts'].append({'api': 'baidu_market', 'error': 'empty data'})
+    except Exception as e:
+        results['attempts'].append({'api': 'baidu_market', 'error': str(e)})
+
+    results['error'] = 'All APIs failed'
+    return jsonify(results)
 
 @app.route('/api/stock/<code>/kline')
 def api_kline(code):
@@ -310,51 +332,19 @@ def api_kline(code):
             change_pct = 0
         is_up = change_pct >= 0
 
-        # K-line: scan ALL columns to find actual OHLC price values
-        # The API sometimes returns columns misaligned
+        # K-line data - use values directly from API
+        raw_open = row.get('open', 0)
+        raw_close = row.get('close', 0)
+        raw_low = row.get('low', 0)
+        raw_high = row.get('high', 0)
 
-        # Collect all numeric values from the row
-        all_values = []
-        for col in ['open', 'close', 'high', 'low', 'pre_close']:
-            try:
-                v = float(row.get(col, 0))
-                if v > 0:
-                    all_values.append(v)
-            except:
-                pass
-
-        # Find price-like values (cluster of similar values, typically 4+ values within 30% of each other)
-        if len(all_values) >= 2:
-            # Use the median as reference (more robust than any single value)
-            sorted_vals = sorted(all_values)
-            median_val = sorted_vals[len(sorted_vals) // 2]
-
-            # Filter to values within 30% of median (valid prices for a single day)
-            price_vals = [v for v in all_values if 0.7 <= v / median_val <= 1.3]
-
-            if len(price_vals) >= 2:
-                display_open = price_vals[0]  # First valid price as open
-                display_close = float(row.get('close', price_vals[-1]))
-                # Validate close
-                if not (0.7 <= display_close / median_val <= 1.3):
-                    display_close = price_vals[-1]
-                display_low = min(price_vals)
-                display_high = max(price_vals)
-            else:
-                # Fallback: use close for everything
-                display_close = float(row.get('close', 0)) or median_val
-                display_open = display_close
-                display_low = display_close
-                display_high = display_close
-        else:
-            # No valid prices found
-            display_open = display_close = display_low = display_high = 0
-
-        raw_close = display_close
+        # Ensure low <= high (swap if needed)
+        display_low = min(raw_low, raw_high)
+        display_high = max(raw_low, raw_high)
 
         kline_data.append({
             'value': [
-                safe_round(display_open),
+                safe_round(raw_open),
                 safe_round(raw_close),
                 safe_round(display_low),
                 safe_round(display_high)
