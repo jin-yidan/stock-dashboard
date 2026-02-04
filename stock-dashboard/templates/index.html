@@ -18,7 +18,7 @@
                         <circle cx="11" cy="11" r="8"></circle>
                         <path d="M21 21l-4.35-4.35"></path>
                     </svg>
-                    <input type="text" id="code" class="search-input" placeholder="输入代码或名称，如 600519、茅台" autofocus>
+                    <input type="text" id="code" class="search-input" placeholder="输入代码或名称" autofocus>
                 </div>
             </form>
             <div id="hero-search-results" class="search-dropdown"></div>
@@ -82,6 +82,22 @@
 <script>
 document.getElementById('code').focus();
 
+// HTML escape helper to prevent XSS
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Fetch with timeout helper
+function fetchWithTimeout(url, options = {}, timeout = 10000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timeoutId));
+}
+
 let heroSearchTimeout;
 const codeInput = document.getElementById('code');
 
@@ -102,7 +118,7 @@ codeInput.addEventListener('input', function() {
     }
 
     heroSearchTimeout = setTimeout(() => {
-        fetch('/api/search?q=' + encodeURIComponent(q))
+        fetchWithTimeout('/api/search?q=' + encodeURIComponent(q), {}, 5000)
             .then(r => r.json())
             .then(data => {
                 if (data.length === 0) {
@@ -110,12 +126,15 @@ codeInput.addEventListener('input', function() {
                     return;
                 }
                 const html = data.slice(0, 5).map(s => `
-                    <a href="/stock/${s.stock_code}" class="hero-result-item">
-                        <span class="result-name">${s.short_name}</span>
-                        <span class="result-code">${s.stock_code}</span>
+                    <a href="/stock/${escapeHtml(s.stock_code)}" class="hero-result-item">
+                        <span class="result-name">${escapeHtml(s.short_name)}</span>
+                        <span class="result-code">${escapeHtml(s.stock_code)}</span>
                     </a>
                 `).join('');
                 document.getElementById('hero-search-results').innerHTML = html;
+            })
+            .catch(err => {
+                console.error('Search error:', err);
             });
     }, 150);
 });
@@ -207,16 +226,18 @@ function renderWatchlist() {
     container.innerHTML = list.map(s => {
         const cached = getCachedQuote(s.code);
         const quote = cached ? renderQuoteHtml(cached) : { price: '--', pct: '--', pctClass: '' };
+        const safeCode = escapeHtml(s.code);
+        const safeName = escapeHtml(s.name);
         return `
-            <a href="/stock/${s.code}" class="stock-row" id="stock-${s.code}" onmouseenter="preloadStock('${s.code}')">
+            <a href="/stock/${safeCode}" class="stock-row" id="stock-${safeCode}" onmouseenter="preloadStock('${safeCode}')">
                 <span class="col-name">
-                    <span class="stock-name">${s.name}</span>
-                    <span class="stock-code">${s.code}</span>
+                    <span class="stock-name">${safeName}</span>
+                    <span class="stock-code">${safeCode}</span>
                 </span>
-                <span class="col-price" id="price-${s.code}">${quote.price}</span>
-                <span class="col-change ${quote.pctClass}" id="pct-${s.code}">${quote.pct}</span>
+                <span class="col-price" id="price-${safeCode}">${quote.price}</span>
+                <span class="col-change ${quote.pctClass}" id="pct-${safeCode}">${quote.pct}</span>
                 <span class="col-action">
-                    <button class="btn-remove" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${s.code}')" title="移除">
+                    <button class="btn-remove" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${safeCode}')" title="移除">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="18" y1="6" x2="6" y2="18"></line>
                             <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -232,14 +253,20 @@ function renderWatchlist() {
 }
 
 function loadWatchlistQuotes(list) {
-    list.forEach(s => {
-        fetch('/api/stock/' + s.code + '/quote')
-            .then(r => r.json())
-            .then(data => {
-                if (!data.error && data.price) {
-                    saveQuoteCache(s.code, data);
+    if (list.length === 0) return;
+
+    // Use batch API for better performance
+    const codes = list.map(s => s.code).join(',');
+    fetchWithTimeout('/api/quotes/batch?codes=' + encodeURIComponent(codes), {}, 10000)
+        .then(r => r.json())
+        .then(data => {
+            const quotes = data.quotes || {};
+            list.forEach(s => {
+                const quoteData = quotes[s.code];
+                if (quoteData && !quoteData.error && quoteData.price) {
+                    saveQuoteCache(s.code, quoteData);
                 }
-                const quote = renderQuoteHtml(data);
+                const quote = renderQuoteHtml(quoteData);
                 const priceEl = document.getElementById('price-' + s.code);
                 const pctEl = document.getElementById('pct-' + s.code);
                 if (priceEl) priceEl.textContent = quote.price;
@@ -247,14 +274,17 @@ function loadWatchlistQuotes(list) {
                     pctEl.textContent = quote.pct;
                     pctEl.className = 'col-change ' + quote.pctClass;
                 }
-            })
-            .catch(() => {
+            });
+        })
+        .catch(() => {
+            // Fallback: show cached or error state
+            list.forEach(s => {
                 const priceEl = document.getElementById('price-' + s.code);
                 const pctEl = document.getElementById('pct-' + s.code);
                 if (priceEl) priceEl.textContent = '--';
                 if (pctEl) { pctEl.textContent = '--'; pctEl.className = 'col-change'; }
             });
-    });
+        });
 }
 
 function addToWatchlist(code, name) {
@@ -283,13 +313,13 @@ function addStockElement(code, name, prepend = false) {
     a.onmouseenter = () => preloadStock(code);
     a.innerHTML = `
         <span class="col-name">
-            <span class="stock-name">${name}</span>
-            <span class="stock-code">${code}</span>
+            <span class="stock-name">${escapeHtml(name)}</span>
+            <span class="stock-code">${escapeHtml(code)}</span>
         </span>
-        <span class="col-price" id="price-${code}">${quote.price}</span>
-        <span class="col-change ${quote.pctClass}" id="pct-${code}">${quote.pct}</span>
+        <span class="col-price" id="price-${escapeHtml(code)}">${quote.price}</span>
+        <span class="col-change ${quote.pctClass}" id="pct-${escapeHtml(code)}">${quote.pct}</span>
         <span class="col-action">
-            <button class="btn-remove" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${code}')" title="移除">
+            <button class="btn-remove" onclick="event.preventDefault();event.stopPropagation();removeFromWatchlist('${escapeHtml(code)}')" title="移除">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -376,16 +406,23 @@ function searchStocks() {
         return;
     }
     searchTimeout = setTimeout(() => {
-        fetch('/api/search?q=' + encodeURIComponent(q))
+        fetchWithTimeout('/api/search?q=' + encodeURIComponent(q), {}, 5000)
             .then(r => r.json())
             .then(data => {
-                const html = data.map(s => `
-                    <button class="search-result-item" onclick="addToWatchlist('${s.stock_code}', '${s.short_name}')">
-                        <span class="code">${s.stock_code}</span>
-                        <span class="name">${s.short_name}</span>
-                    </button>
-                `).join('');
+                const html = data.map(s => {
+                    const safeCode = escapeHtml(s.stock_code);
+                    const safeName = escapeHtml(s.short_name);
+                    return `
+                        <button class="search-result-item" onclick="addToWatchlist('${safeCode}', '${safeName}')">
+                            <span class="code">${safeCode}</span>
+                            <span class="name">${safeName}</span>
+                        </button>
+                    `;
+                }).join('');
                 document.getElementById('modal-search-results').innerHTML = html || '<p class="text-secondary small">未找到</p>';
+            })
+            .catch(err => {
+                console.error('Modal search error:', err);
             });
     }, 200);
 }

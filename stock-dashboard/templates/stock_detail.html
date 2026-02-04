@@ -17,11 +17,13 @@
         </div>
         <div class="stock-header-row">
             <div class="stock-info">
-                <h1>{{ stock_name }}</h1>
+                <div class="stock-name-row">
+                    <h1>{{ stock_name }}</h1>
+                    <button id="watchlist-btn" class="btn-watchlist" onclick="toggleWatchlist()">
+                        <span id="watchlist-icon">☆</span> 自选
+                    </button>
+                </div>
                 <span class="stock-code">{{ stock_code }}</span>
-                <button id="watchlist-btn" class="btn-watchlist" onclick="toggleWatchlist()">
-                    <span id="watchlist-icon">☆</span> 自选
-                </button>
             </div>
             <div class="stock-price" id="price-section">
                 <div class="skeleton skeleton-text xl"></div>
@@ -37,9 +39,7 @@
                 <div class="signal-header-row">
                     <div class="signal-label">综合评估</div>
                     <div class="ai-section-inline">
-                        <button class="ai-btn" onclick="generateAiAnalysis()" id="ai-generate-btn">AI 分析</button>
-                        <a href="javascript:void(0)" onclick="showApiKeyModal()" class="ai-key-link">设置 Key</a>
-                        <span id="ai-status" class="ai-status"></span>
+                        <button class="ai-btn" onclick="handleAiAnalysis()" id="ai-generate-btn">AI 分析</button>
                     </div>
                 </div>
                 <div id="signal-value" class="signal-value">
@@ -50,6 +50,9 @@
                     <span class="skeleton skeleton-text wide"></span>
                 </p>
             </div>
+            <!-- AI Analysis Result -->
+            <div id="ai-result" class="ai-result" style="display:none;"></div>
+
             <!-- Education Context -->
             <div id="education-context" class="education-context" style="display:none;">
                 <div class="edu-header">
@@ -71,9 +74,6 @@
                     <div class="edu-regime" id="edu-regime"></div>
                 </div>
             </div>
-
-            <!-- AI Analysis Result -->
-            <div id="ai-result" class="ai-result" style="display:none;"></div>
         </div>
     </div>
 
@@ -81,14 +81,14 @@
     <div id="api-key-modal" class="modal" style="display:none;">
         <div class="modal-content modal-sm">
             <div class="modal-header">
-                <span class="modal-title">Claude API Key</span>
+                <span class="modal-title">AI 分析</span>
                 <button class="modal-close" onclick="hideApiKeyModal()">&times;</button>
             </div>
-            <div class="modal-body">
-                <p class="modal-note">输入你的 Anthropic API Key</p>
-                <input type="text" id="api-key-input" placeholder="sk-ant-..." class="api-key-input">
+            <div class="modal-body" style="padding-top:12px;">
+                <input type="text" id="api-key-input" placeholder="输入 Claude API Key" class="api-key-input">
+                <div id="ai-modal-error" class="ai-modal-error"></div>
                 <div class="modal-actions">
-                    <button class="btn-save" onclick="saveApiKey()">保存</button>
+                    <button class="btn-save" onclick="confirmAndAnalyze()">开始分析</button>
                     <button class="btn-clear" onclick="clearApiKey()">清除</button>
                 </div>
             </div>
@@ -321,6 +321,23 @@ window.stockCode = stockCode;  // Make available to new-features.js
 const stockName = '{{ stock_name }}';
 let klineChart = null;
 
+// HTML escape helper to prevent XSS
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Fetch with timeout helper
+function fetchWithTimeout(url, options = {}, timeout = 15000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    return fetch(url, { ...options, signal: controller.signal })
+        .finally(() => clearTimeout(timeoutId));
+}
+
 // Watchlist functions
 function getWatchlist() {
     const data = localStorage.getItem('watchlist');
@@ -360,7 +377,7 @@ function toggleWatchlist() {
 
 // Load signal data
 function loadSignalData() {
-    fetch('/api/stock/' + stockCode + '/signal')
+    fetchWithTimeout('/api/stock/' + stockCode + '/signal', {}, 20000)
         .then(r => r.json())
         .then(data => {
             console.log('Signal data:', data);  // Debug
@@ -378,7 +395,8 @@ function loadSignalData() {
             box.classList.remove('loading');
             document.getElementById('signal-value').textContent = data.signal_cn;
             document.getElementById('signal-score').textContent = Math.round(data.score * 100) + ' / 100';
-            document.getElementById('signal-summary').innerHTML = data.simple_summary;
+            // Use textContent for simple_summary to prevent XSS
+            document.getElementById('signal-summary').textContent = data.simple_summary || '';
             document.getElementById('signal-summary').classList.add('fade-in');
 
             // Update indicators with education content
@@ -388,24 +406,24 @@ function loadSignalData() {
                 const scoreClass = ind.weighted_score > 0 ? 'up' : (ind.weighted_score < 0 ? 'down' : '');
                 const scorePrefix = ind.weighted_score > 0 ? '+' : '';
 
-                // Build education content if available
+                // Build education content if available (escape all user data)
                 let eduHtml = '';
                 if (ind.education) {
                     const edu = ind.education;
                     eduHtml = `
                         <div class="indicator-education" id="edu-${idx}" style="display:none;">
-                            ${edu.what_it_measures ? `<div class="edu-section"><strong>指标含义：</strong>${edu.what_it_measures}</div>` : ''}
+                            ${edu.what_it_measures ? `<div class="edu-section"><strong>指标含义：</strong>${escapeHtml(edu.what_it_measures)}</div>` : ''}
                             ${edu.how_to_read && edu.how_to_read.length > 0 ? `
                                 <div class="edu-section"><strong>如何解读：</strong>
-                                    <ul>${edu.how_to_read.map(h => `<li>${h}</li>`).join('')}</ul>
+                                    <ul>${edu.how_to_read.map(h => `<li>${escapeHtml(h)}</li>`).join('')}</ul>
                                 </div>
                             ` : ''}
                             ${edu.tips && edu.tips.length > 0 ? `
                                 <div class="edu-section"><strong>使用技巧：</strong>
-                                    <ul>${edu.tips.map(t => `<li>${t}</li>`).join('')}</ul>
+                                    <ul>${edu.tips.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
                                 </div>
                             ` : ''}
-                            ${edu.accuracy_note ? `<div class="edu-note">${edu.accuracy_note}</div>` : ''}
+                            ${edu.accuracy_note ? `<div class="edu-note">${escapeHtml(edu.accuracy_note)}</div>` : ''}
                         </div>
                     `;
                 }
@@ -414,10 +432,10 @@ function loadSignalData() {
                     <tr>
                         <td>
                             <div class="indicator-name-row">
-                                <span>${ind.name}</span>
+                                <span>${escapeHtml(ind.name)}</span>
                                 ${ind.education ? `<button class="learn-btn" onclick="toggleEducation(${idx})">展开</button>` : ''}
                             </div>
-                            <div class="explain">${ind.plain_explanation}</div>
+                            <div class="explain">${escapeHtml(ind.plain_explanation)}</div>
                             ${eduHtml}
                         </td>
                         <td>
@@ -451,7 +469,8 @@ function loadSignalData() {
         .catch(err => {
             console.error('Error loading signal:', err);
             document.getElementById('signal-value').textContent = '加载失败';
-            document.getElementById('signal-summary').textContent = '网络错误，请刷新重试';
+            const isTimeout = err.name === 'AbortError';
+            document.getElementById('signal-summary').textContent = isTimeout ? '请求超时，请刷新重试' : '网络错误，请刷新重试';
         });
 }
 
@@ -476,7 +495,7 @@ function loadMLPrediction() {
     document.getElementById('ml-content').innerHTML = '<span class="loading-spinner"></span><span class="loading-text">正在分析...</span>';
 
     // First try to predict with existing model
-    fetch('/api/stock/' + stockCode + '/ml/predict')
+    fetchWithTimeout('/api/stock/' + stockCode + '/ml/predict', {}, 15000)
         .then(r => r.json())
         .then(data => {
             if (data.error) {
@@ -508,7 +527,7 @@ function loadMLPrediction() {
 
 // Load fundamental data
 function loadFundamentalData() {
-    fetch('/api/stock/' + stockCode + '/fundamental')
+    fetchWithTimeout('/api/stock/' + stockCode + '/fundamental', {}, 15000)
         .then(r => r.json())
         .then(data => {
             if (data && data.has_data) {
@@ -527,10 +546,10 @@ function showFundamental(fund) {
     let html = '<div class="fundamental-grid fade-in">';
 
     if (fund.market_cap_yi) {
-        html += `<div class="fund-item"><span class="fund-label">市值</span><span class="fund-value">${fund.market_cap_yi}亿</span></div>`;
+        html += `<div class="fund-item"><span class="fund-label">市值</span><span class="fund-value">${escapeHtml(String(fund.market_cap_yi))}亿</span></div>`;
     }
     if (fund.industry) {
-        html += `<div class="fund-item"><span class="fund-label">行业</span><span class="fund-value">${fund.industry}</span></div>`;
+        html += `<div class="fund-item"><span class="fund-label">行业</span><span class="fund-value">${escapeHtml(fund.industry)}</span></div>`;
     }
     if (fund.has_dividend !== undefined) {
         html += `<div class="fund-item"><span class="fund-label">分红</span><span class="fund-value">${fund.has_dividend ? '有 ('+fund.dividend_count+'次)' : '无'}</span></div>`;
@@ -541,7 +560,7 @@ function showFundamental(fund) {
     if (fund.reasons && fund.reasons.length > 0) {
         html += '<div class="fund-reasons">';
         fund.reasons.forEach(r => {
-            html += `<span class="fund-reason">${r}</span>`;
+            html += `<span class="fund-reason">${escapeHtml(r)}</span>`;
         });
         html += '</div>';
     }
@@ -553,7 +572,7 @@ function showFundamental(fund) {
         html += '<span class="fund-concepts-label">概念板块</span>';
         html += '<div class="fund-concepts-list">';
         uniqueConcepts.forEach(c => {
-            html += `<span class="fund-concept-tag">${c}</span>`;
+            html += `<span class="fund-concept-tag">${escapeHtml(c)}</span>`;
         });
         html += '</div></div>';
     }
@@ -563,7 +582,7 @@ function showFundamental(fund) {
 
 // Load CZSC (Chan Theory) data
 function loadCzscData() {
-    fetch('/api/stock/' + stockCode + '/czsc')
+    fetchWithTimeout('/api/stock/' + stockCode + '/czsc', {}, 15000)
         .then(r => r.json())
         .then(data => {
             if (!data.available) {
@@ -586,15 +605,15 @@ function loadCzscData() {
             html += `<span class="czsc-value ${signalClass}">缠论${signalCn}</span>`;
 
             if (buyPoint) {
-                html += `<span class="czsc-point buy">${buyPoint}</span>`;
+                html += `<span class="czsc-point buy">${escapeHtml(buyPoint)}</span>`;
             } else if (sellPoint) {
-                html += `<span class="czsc-point sell">${sellPoint}</span>`;
+                html += `<span class="czsc-point sell">${escapeHtml(sellPoint)}</span>`;
             }
 
             html += '</div>';
 
             html += '<div class="czsc-details">';
-            html += `<div class="czsc-item"><span class="czsc-label">当前笔方向</span><span class="czsc-val">${biDirection}</span></div>`;
+            html += `<div class="czsc-item"><span class="czsc-label">当前笔方向</span><span class="czsc-val">${escapeHtml(biDirection)}</span></div>`;
             html += `<div class="czsc-item"><span class="czsc-label">笔数量</span><span class="czsc-val">${biCount}</span></div>`;
             html += '</div>';
 
@@ -602,7 +621,7 @@ function loadCzscData() {
             if (data.analysis && data.analysis.length > 0) {
                 html += '<div class="czsc-analysis">';
                 data.analysis.forEach(note => {
-                    html += `<span class="czsc-note">${note}</span>`;
+                    html += `<span class="czsc-note">${escapeHtml(note)}</span>`;
                 });
                 html += '</div>';
             }
@@ -617,7 +636,7 @@ function loadCzscData() {
 
 // Load quote data
 function loadQuoteData() {
-    fetch('/api/stock/' + stockCode + '/quote')
+    fetchWithTimeout('/api/stock/' + stockCode + '/quote', {}, 10000)
         .then(r => r.json())
         .then(data => {
             if (!data || data.error) {
@@ -700,12 +719,14 @@ function renderKlineChart(data) {
             formatter: function(params) {
                 const kline = params.find(p => p.seriesName === 'K线');
                 if (!kline) return '';
-                const d = kline.data;
+                // Data can be array or object with value property
+                const d = kline.data.value || kline.data;
+                if (!d || !Array.isArray(d)) return '';
                 return `${kline.axisValue}<br/>
-                    开: ${d[1]}<br/>
-                    高: ${d[4]}<br/>
-                    低: ${d[3]}<br/>
-                    收: ${d[2]}`;
+                    开: ${d[0]}<br/>
+                    收: ${d[1]}<br/>
+                    低: ${d[2]}<br/>
+                    高: ${d[3]}`;
             }
         },
         legend: {
@@ -833,7 +854,7 @@ function startQuoteRefresh() {
 
 // Load 52-week data
 function load52WeekData() {
-    fetch('/api/stock/' + stockCode + '/52week')
+    fetchWithTimeout('/api/stock/' + stockCode + '/52week', {}, 10000)
         .then(r => r.json())
         .then(data => {
             if (data.error) return;
@@ -858,7 +879,7 @@ function load52WeekData() {
 
 // Load CYQ Chip Distribution data
 function loadCyqData() {
-    fetch('/api/stock/' + stockCode + '/cyq')
+    fetchWithTimeout('/api/stock/' + stockCode + '/cyq', {}, 15000)
         .then(r => r.json())
         .then(data => {
             if (!data.available) {
@@ -921,7 +942,7 @@ function loadCyqData() {
 
 // Load Trading Strategies data
 function loadStrategyData() {
-    fetch('/api/stock/' + stockCode + '/strategies')
+    fetchWithTimeout('/api/stock/' + stockCode + '/strategies', {}, 15000)
         .then(r => r.json())
         .then(data => {
             const triggered = data.triggered || [];
@@ -936,7 +957,7 @@ function loadStrategyData() {
             let html = '<div class="strategy-list">';
             triggered.forEach(s => {
                 html += '<div class="strategy-item triggered">';
-                html += '<div class="strategy-name">' + (s.name_cn || s.strategy) + '</div>';
+                html += '<div class="strategy-name">' + escapeHtml(s.name_cn || s.strategy) + '</div>';
                 if (s.details) {
                     // Chinese labels for strategy fields
                     const fieldLabels = {
@@ -974,8 +995,8 @@ function loadStrategyData() {
                     const detailItems = Object.entries(s.details).slice(0, 3);
                     html += '<div class="strategy-details">';
                     detailItems.forEach(([key, val]) => {
-                        const label = fieldLabels[key] || key;
-                        let displayVal = typeof val === 'number' ? val.toFixed(2) : val;
+                        const label = fieldLabels[key] || escapeHtml(key);
+                        let displayVal = typeof val === 'number' ? val.toFixed(2) : escapeHtml(String(val));
                         // Add % for percentage fields
                         if (key.includes('pct') || key.includes('change') || key.includes('ratio') || key.includes('growth') || key.includes('retracement')) {
                             displayVal += '%';
@@ -1051,10 +1072,10 @@ function showEducationContext(edu) {
     if (edu.key_factors && edu.key_factors.length > 0) {
         bullishDiv.innerHTML = edu.key_factors.map(f => `
             <div class="factor-item">
-                <span class="factor-name">${f.name}</span>
-                <span class="factor-score up">+${f.contribution}</span>
+                <span class="factor-name">${escapeHtml(f.name)}</span>
+                <span class="factor-score up">+${escapeHtml(String(f.contribution))}</span>
             </div>
-            <div class="factor-explain">${f.explanation}</div>
+            <div class="factor-explain">${escapeHtml(f.explanation)}</div>
         `).join('');
     } else {
         bullishDiv.innerHTML = '<div class="no-factors">暂无明显看多信号</div>';
@@ -1065,10 +1086,10 @@ function showEducationContext(edu) {
     if (edu.risk_factors && edu.risk_factors.length > 0) {
         bearishDiv.innerHTML = edu.risk_factors.map(f => `
             <div class="factor-item">
-                <span class="factor-name">${f.name}</span>
-                <span class="factor-score down">${f.contribution}</span>
+                <span class="factor-name">${escapeHtml(f.name)}</span>
+                <span class="factor-score down">${escapeHtml(String(f.contribution))}</span>
             </div>
-            <div class="factor-explain">${f.explanation}</div>
+            <div class="factor-explain">${escapeHtml(f.explanation)}</div>
         `).join('');
     } else {
         bearishDiv.innerHTML = '<div class="no-factors">暂无明显风险信号</div>';
@@ -1077,7 +1098,7 @@ function showEducationContext(edu) {
     // Show suggested action
     const actionDiv = document.getElementById('edu-action');
     if (edu.suggested_action) {
-        actionDiv.innerHTML = `<strong>建议操作：</strong>${edu.suggested_action}`;
+        actionDiv.innerHTML = `<strong>建议操作：</strong>${escapeHtml(edu.suggested_action)}`;
         actionDiv.style.display = 'block';
     } else {
         actionDiv.style.display = 'none';
@@ -1089,8 +1110,8 @@ function showEducationContext(edu) {
         const re = edu.regime_education;
         regimeDiv.innerHTML = `
             <div class="regime-info">
-                <strong>市场环境 - ${re.name}：</strong>${re.description}
-                <div class="regime-strategy"><strong>策略建议：</strong>${re.strategy}</div>
+                <strong>市场环境 - ${escapeHtml(re.name)}：</strong>${escapeHtml(re.description)}
+                <div class="regime-strategy"><strong>策略建议：</strong>${escapeHtml(re.strategy)}</div>
             </div>
         `;
         regimeDiv.style.display = 'block';
@@ -1111,26 +1132,43 @@ function saveApiKeyToStorage(key) {
     localStorage.setItem('openai_api_key', key);
 }
 
-function showApiKeyModal() {
+function showApiKeyModal(errorMsg) {
     const modal = document.getElementById('api-key-modal');
     const input = document.getElementById('api-key-input');
+    const errorEl = document.getElementById('ai-modal-error');
     input.value = getApiKey();
+    errorEl.textContent = errorMsg || '';
     modal.style.display = 'flex';
+    input.focus();
 }
 
 function hideApiKeyModal() {
     document.getElementById('api-key-modal').style.display = 'none';
-}
-
-function saveApiKey() {
-    const key = document.getElementById('api-key-input').value.trim();
-    saveApiKeyToStorage(key);
-    hideApiKeyModal();
+    document.getElementById('ai-modal-error').textContent = '';
 }
 
 function clearApiKey() {
     saveApiKeyToStorage('');
     document.getElementById('api-key-input').value = '';
+    document.getElementById('ai-modal-error').textContent = '';
+}
+
+// Entry point - show modal to confirm before analysis
+function handleAiAnalysis() {
+    showApiKeyModal();
+}
+
+// Save key and start analysis
+function confirmAndAnalyze() {
+    const key = document.getElementById('api-key-input').value.trim();
+    const errorEl = document.getElementById('ai-modal-error');
+    if (!key) {
+        errorEl.textContent = '请输入 API Key';
+        return;
+    }
+    saveApiKeyToStorage(key);
+    hideApiKeyModal();
+    generateAiAnalysis();
 }
 
 function generateAiAnalysis() {
@@ -1141,13 +1179,11 @@ function generateAiAnalysis() {
     }
 
     const btn = document.getElementById('ai-generate-btn');
-    const status = document.getElementById('ai-status');
     const result = document.getElementById('ai-result');
 
     // Show loading state
     btn.textContent = '分析中...';
     btn.classList.add('loading');
-    status.textContent = '';
     result.style.display = 'none';
 
     fetch('/api/stock/' + stockCode + '/ai-analysis', {
@@ -1162,40 +1198,46 @@ function generateAiAnalysis() {
 
         if (data.success) {
             const formatted = formatAiAnalysis(data.analysis);
-            let html = formatted;
-            if (data.tokens_used) {
-                html += `<div class="ai-usage">Tokens: ${data.tokens_used}</div>`;
-            }
-            result.innerHTML = html;
+            result.innerHTML = `
+                <div class="ai-result-header">
+                    <span class="ai-title">分析报告</span>
+                </div>
+                ${formatted}
+            `;
             result.style.display = 'block';
         } else {
-            status.textContent = data.error;
+            // Show error in modal
+            showApiKeyModal(data.error);
         }
     })
     .catch(err => {
         console.error('AI analysis error:', err);
         btn.textContent = 'AI 分析';
         btn.classList.remove('loading');
-        status.textContent = '网络错误';
+        showApiKeyModal('网络错误，请重试');
     });
 }
 
 function formatAiAnalysis(text) {
-    // Convert markdown-like formatting to HTML
+    // Convert markdown to clean HTML
     let html = text
-        // Headers
-        .replace(/### (.*)/g, '<h4 class="ai-h4">$1</h4>')
-        .replace(/## (.*)/g, '<h3 class="ai-h3">$1</h3>')
         // Bold
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         // Lists
         .replace(/^- (.*)/gm, '<li>$1</li>')
-        // Line breaks
+        // Paragraphs (double line breaks)
         .replace(/\n\n/g, '</p><p>')
+        // Single line breaks
         .replace(/\n/g, '<br>');
 
-    // Wrap lists
-    html = html.replace(/(<li>.*<\/li>)+/g, '<ul>$&</ul>');
+    // Wrap consecutive list items
+    html = html.replace(/(<li>.*?<\/li>)(<br>)?(<li>)/g, '$1$3');
+    html = html.replace(/(<li>.*<\/li>)+/gs, '<ul>$&</ul>');
+
+    // Clean up
+    html = html.replace(/<p>\s*<\/p>/g, '');
+    html = html.replace(/<p><br>/g, '<p>');
+    html = html.replace(/<br><\/p>/g, '</p>');
 
     return '<div class="ai-analysis-content"><p>' + html + '</p></div>';
 }

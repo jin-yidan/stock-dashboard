@@ -4,9 +4,9 @@
    ============================================ */
 
 :root {
-    --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-mono: "IBM Plex Mono", "SF Mono", "Roboto Mono", monospace;
-    --font-num: "DIN Alternate", "Helvetica Neue", "IBM Plex Sans", -apple-system, sans-serif;
+    --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+    --font-num: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
 
     --bg: #ffffff;
     --bg-secondary: #f7f8f9;
@@ -312,23 +312,25 @@ footer p {
 
 .stock-row .stock-code {
     font-size: 12px;
-    font-family: var(--font-mono);
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
     color: var(--text-muted);
 }
 
 .stock-row .col-price {
     font-size: 14px;
-    font-family: var(--font-mono);
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-num);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
     text-align: right;
     color: var(--text);
 }
 
 .stock-row .col-change {
     font-size: 13px;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-num);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums lining-nums;
     text-align: right;
     color: var(--text-muted);
 }
@@ -578,19 +580,25 @@ footer p {
 
 .stock-info {
     display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stock-name-row {
+    display: flex;
     align-items: center;
     gap: 12px;
-    flex-wrap: wrap;
 }
 
 .stock-info h1 {
     margin: 0;
-    margin-right: 4px;
 }
 
 .stock-code {
     color: var(--text-secondary);
-    font-family: var(--font-mono);
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
     font-size: 14px;
 }
 
@@ -609,19 +617,22 @@ h1 {
     color: var(--text-secondary) !important;
 }
 
-/* Price */
+/* Price - Professional numeric display */
 .price {
     font-size: 32px;
     font-weight: 600;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -1px;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    letter-spacing: -0.5px;
 }
 
 .change {
     font-size: 16px;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
+    font-feature-settings: "tnum" 1, "lnum" 1;
 }
 
 /* Buttons */
@@ -681,7 +692,9 @@ h1 {
 
 .signal-score {
     font-size: 14px;
-    font-family: var(--font-mono);
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
     color: var(--text-muted);
     margin-top: 4px;
 }
@@ -762,7 +775,8 @@ h1 {
     display: flex;
     justify-content: space-between;
     font-size: 13px;
-    font-family: var(--font-mono);
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
     color: var(--text-muted);
 }
 
@@ -784,8 +798,9 @@ h1 {
 
 .week52-stat-value {
     font-size: 15px;
-    font-family: var(--font-mono);
-    font-weight: 500;
+    font-family: var(--font-num);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
 }
 
 /* Chart */
@@ -864,10 +879,13 @@ h1 {
 .ml-value, .czsc-value {
     font-size: 20px;
     font-weight: 600;
+    font-family: var(--font-num);
 }
 
 .ml-confidence {
     font-size: 13px;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
     color: var(--text-muted);
 }
 
@@ -957,11 +975,13 @@ h1 {
 .risk-value {
     font-size: 18px;
     font-weight: 600;
-    font-family: var(--font-mono);
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
 }
 
 .risk-pct {
     font-size: 12px;
+    font-family: var(--font-num);
     color: var(--text-muted);
 }
 
@@ -975,8 +995,9 @@ h1 {
 
 .cyq-value {
     font-size: 16px;
-    font-weight: 500;
-    font-family: var(--font-mono);
+    font-weight: 600;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
 }
 
 .cyq-value.up { color: var(--up); }
@@ -1318,44 +1339,52 @@ h1 {
 .ai-result {
     width: 100%;
     margin-top: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+}
+
+.ai-result-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.ai-result-header .ai-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
 }
 
 .ai-analysis-content {
     font-size: 14px;
-    line-height: 1.7;
-    color: var(--text);
-}
-
-.ai-analysis-content h3.ai-h3 {
-    font-size: 14px;
-    font-weight: 600;
-    margin: 20px 0 10px 0;
-}
-
-.ai-analysis-content h3.ai-h3:first-child {
-    margin-top: 0;
-}
-
-.ai-analysis-content h4.ai-h4 {
-    font-size: 13px;
-    font-weight: 600;
-    margin: 14px 0 6px 0;
-}
-
-.ai-analysis-content ul {
-    margin: 6px 0;
-    padding-left: 18px;
-}
-
-.ai-analysis-content li {
-    margin-bottom: 4px;
+    line-height: 1.85;
     color: var(--text-secondary);
 }
 
-.ai-usage {
-    margin-top: 12px;
-    font-size: 11px;
-    color: var(--text-muted);
+.ai-analysis-content p {
+    margin: 0 0 14px 0;
+}
+
+.ai-analysis-content p:last-child {
+    margin-bottom: 0;
+}
+
+.ai-analysis-content ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.ai-analysis-content li {
+    margin-bottom: 6px;
+    line-height: 1.7;
+}
+
+.ai-analysis-content strong {
+    color: var(--text);
+    font-weight: 500;
 }
 
 /* API Key Modal */
@@ -1441,6 +1470,17 @@ h1 {
 .api-key-input:focus {
     outline: none;
     border-color: var(--text);
+}
+
+.ai-modal-error {
+    font-size: 13px;
+    color: #c41e3a;
+    margin-top: 8px;
+    min-height: 18px;
+}
+
+.ai-modal-error:empty {
+    display: none;
 }
 
 .api-key-help {
@@ -1560,6 +1600,8 @@ h1 {
 .backtest-value {
     font-size: 20px;
     font-weight: 600;
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums lining-nums;
     margin-bottom: 4px;
 }
 

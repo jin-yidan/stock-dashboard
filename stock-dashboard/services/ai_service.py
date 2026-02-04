@@ -55,56 +55,47 @@ def build_analysis_prompt(stock_code, stock_name, signal_data, cyq_data, strateg
     take_profit = signal_data.get('take_profit')
     risk_text = f"- 建议止损: {stop_loss}\n- 建议止盈: {take_profit}" if stop_loss else "暂无建议"
 
-    prompt = f"""你是一位专业的A股分析师。请对股票 **{stock_name} ({stock_code})** 进行全面分析。
+    prompt = f"""你是一位私募基金经理，正在给客户做个股分析。客户是有一定经验的散户，需要专业但能听懂的建议。
 
-## 技术分析数据（已通过量化模型计算）
+股票：{stock_name} ({stock_code})
 
-### 综合信号
-- 信号: {signal_data.get('signal_cn', 'N/A')}
-- 得分: {signal_data.get('score', 0):.3f} (范围 -1 到 +1)
-- 置信度: {signal_data.get('confidence', 0)}%
-- 市场环境: {signal_data.get('market_regime', 'unknown')}
+当前技术面数据：
+- 综合信号：{signal_data.get('signal_cn', 'N/A')}，得分 {signal_data.get('score', 0):.2f}（满分1分），置信度 {signal_data.get('confidence', 0)}%
+- 市场状态：{signal_data.get('market_regime', 'unknown')}
+- 52周位置：{week52_text}
 
-### 指标明细（按贡献度排序）
+主要指标：
 {indicators_text}
 
-### 筹码分布 (CYQ)
+筹码分布：
 {cyq_text}
 
-### 触发的交易策略
+触发的策略信号：
 {strategies_text}
 
-### 52周价格位置
-{week52_text}
-
-### 风险管理
-{risk_text}
-
 ---
 
-## 请给出综合分析报告
+请给出分析报告。要求：
 
-### 1. 一句话结论
-（明确看多/看空/观望，20字以内）
+1. 结论先行
+开头第一句话直接给结论：建议买入/卖出/持有/观望，以及核心理由（一句话）。
 
-### 2. 技术面分析
-（基于上述量化数据，指出2-3个关键点）
+2. 关键判断依据
+从上面的数据中，挑出2-3个最重要的指标，解释它们说明了什么问题。不要罗列所有指标，只说最关键的。比如："MACD刚形成金叉，但成交量没有放大配合，说明上涨动能不足"。
 
-### 3. 操作建议
-- 仓位建议：轻仓/半仓/重仓
-- 买入时机：具体价位或条件
-- 止损位：{stop_loss if stop_loss else '建议设置'}
-- 止盈位：{take_profit if take_profit else '建议设置'}
+3. 具体操作建议
+- 如果建议买入：在什么价位买？分几次建仓？
+- 如果建议观望：等待什么信号出现再考虑？
+- 止损设在哪里？为什么设在这个位置？
 
-### 4. 风险提示
-（列出2-3个需要警惕的风险点）
+4. 主要风险
+指出1-2个最需要警惕的风险，要具体。比如"下周五公布财报，如果业绩不及预期可能补跌"，而不是"注意业绩风险"。
 
----
-
-要求：
-- 保持客观专业，不要过度乐观或悲观
-- 总字数控制在300-400字
-- 给出的建议要具体可执行
+格式要求：
+- 用自然的段落，不要用太多列表
+- 不要用"首先、其次、最后"这种八股文结构
+- 像在微信上给朋友讲解一样，专业但不生硬
+- 控制在250-350字
 """
 
     return prompt
@@ -129,8 +120,8 @@ def generate_ai_analysis(api_key, stock_code, stock_name, signal_data, cyq_data,
     if not HAS_ANTHROPIC:
         return {'success': False, 'error': '服务器未安装 anthropic 库'}
 
-    if not api_key or not api_key.startswith('sk-ant-'):
-        return {'success': False, 'error': 'API Key 格式错误，应以 sk-ant- 开头'}
+    if not api_key:
+        return {'success': False, 'error': '请输入 API Key'}
 
     prompt = build_analysis_prompt(
         stock_code, stock_name, signal_data,
@@ -160,14 +151,12 @@ def generate_ai_analysis(api_key, stock_code, stock_name, signal_data, cyq_data,
             'model': 'claude-sonnet-4'
         }
 
+    except anthropic.AuthenticationError:
+        return {'success': False, 'error': 'API Key 无效，请检查后重试'}
+    except anthropic.RateLimitError:
+        return {'success': False, 'error': 'API 请求频率超限，请稍后重试'}
+    except anthropic.APIStatusError as e:
+        # Show actual error for debugging
+        return {'success': False, 'error': f'API 错误: {e.message}'}
     except Exception as e:
-        error_msg = str(e)
-
-        if 'invalid_api_key' in error_msg.lower() or 'authentication' in error_msg.lower():
-            return {'success': False, 'error': 'API Key 无效，请检查后重试'}
-        elif 'rate_limit' in error_msg.lower():
-            return {'success': False, 'error': 'API 请求频率超限，请稍后重试'}
-        elif 'credit' in error_msg.lower() or 'billing' in error_msg.lower():
-            return {'success': False, 'error': 'API 余额不足，请充值后重试'}
-        else:
-            return {'success': False, 'error': f'分析失败: {error_msg}'}
+        return {'success': False, 'error': f'分析失败: {str(e)}'}

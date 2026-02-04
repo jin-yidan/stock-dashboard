@@ -1,7 +1,8 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, abort
 from datetime import datetime
 import os
 import sys
+import re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -10,6 +11,23 @@ from services import db_service, data_service, signal_service, indicator_service
 from services import ml_service, fundamental_service, czsc_service, market_service
 
 app = Flask(__name__)
+
+
+def validate_stock_code(code):
+    """Validate stock code format (6 digits only). Returns None if invalid."""
+    if not code or not isinstance(code, str):
+        return None
+    # Stock codes are exactly 6 digits
+    if not re.match(r'^\d{6}$', code):
+        return None
+    return code
+
+
+def require_valid_code(code):
+    """Validate stock code or abort with 400 error."""
+    if not validate_stock_code(code):
+        abort(400, description='Invalid stock code format')
+    return code
 
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 db_service.init_db()
@@ -26,17 +44,19 @@ def index():
 @app.route('/stock/<code>')
 def stock_detail(code):
     """Stock analysis page - loads data via AJAX for faster initial render."""
+    code = require_valid_code(code)
     stock_name = data_service.get_stock_name(code)
     return render_template(
         'stock_detail.html',
         stock_code=code,
-        stock_name=stock_name
+        stock_name=stock_name or code
     )
 
 
 @app.route('/api/stock/<code>/signal')
 def api_signal(code):
     """API endpoint for signal data."""
+    code = require_valid_code(code)
     signal_data = signal_service.generate_signal(code)
     return jsonify(signal_data)
 
@@ -54,6 +74,7 @@ def api_search():
 @app.route('/api/stock/<code>/info')
 def api_stock_info(code):
     """Get basic stock info quickly."""
+    code = require_valid_code(code)
     name = data_service.get_stock_name(code)
     return jsonify({'stock_code': code, 'short_name': name})
 
@@ -61,13 +82,15 @@ def api_stock_info(code):
 @app.route('/api/stock/<code>/preload')
 def api_preload(code):
     """Preload stock data in background (call on hover)."""
+    if not validate_stock_code(code):
+        return jsonify({'status': 'invalid'})
     import threading
 
     def _preload():
         try:
             data_service.get_stock_kline(code)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Preload error for {code}: {e}")
 
     threading.Thread(target=_preload, daemon=True).start()
     return jsonify({'status': 'loading'})
@@ -76,16 +99,56 @@ def api_preload(code):
 @app.route('/api/stock/<code>/quote')
 def api_quote(code):
     """Get realtime quote."""
+    code = require_valid_code(code)
     quote = data_service.get_realtime_quote(code)
     if quote:
         return jsonify(quote)
     return jsonify({'error': 'No data'})
 
 
+@app.route('/api/quotes/batch')
+def api_quotes_batch():
+    """
+    Get quotes for multiple stocks at once.
+    Usage: /api/quotes/batch?codes=600519,000858,002594
+    Returns: { "quotes": { "600519": {...}, "000858": {...} } }
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    codes_param = request.args.get('codes', '')
+    if not codes_param:
+        return jsonify({'error': 'Provide codes via ?codes=600519,000858,...'})
+
+    # Validate and limit codes (max 20 to prevent abuse)
+    codes = [c.strip() for c in codes_param.split(',') if validate_stock_code(c.strip())][:20]
+    if not codes:
+        return jsonify({'error': 'No valid stock codes provided'})
+
+    def get_quote_safe(code):
+        try:
+            quote = data_service.get_realtime_quote(code)
+            return code, quote if quote else {'error': 'No data'}
+        except Exception:
+            return code, {'error': 'Failed to fetch'}
+
+    quotes = {}
+    with ThreadPoolExecutor(max_workers=min(len(codes), 10)) as executor:
+        futures = {executor.submit(get_quote_safe, code): code for code in codes}
+        for future in futures:
+            try:
+                code, quote = future.result(timeout=8)
+                quotes[code] = quote
+            except Exception:
+                quotes[futures[future]] = {'error': 'Timeout'}
+
+    return jsonify({'quotes': quotes})
+
+
 @app.route('/api/stock/<code>/backtest')
 def api_backtest(code):
     """Get backtest results for signal accuracy."""
-    days = request.args.get('days', 60, type=int)
+    code = require_valid_code(code)
+    days = min(request.args.get('days', 60, type=int), 365)  # Cap at 1 year
     result = signal_service.backtest_signal(code, lookback_days=days)
     return jsonify(result)
 
@@ -93,6 +156,7 @@ def api_backtest(code):
 @app.route('/api/stock/<code>/ml/train')
 def api_ml_train(code):
     """Train ML model for a specific stock."""
+    code = require_valid_code(code)
     df = data_service.get_stock_kline(code, days=500)  # More data for training
     if df.empty:
         return jsonify({'error': 'No data'})
@@ -117,6 +181,7 @@ def api_ml_train(code):
 @app.route('/api/stock/<code>/ml/predict')
 def api_ml_predict(code):
     """Get ML prediction for a stock."""
+    code = require_valid_code(code)
     df = data_service.get_stock_kline(code, days=200)  # Need more data for features
     if df.empty:
         return jsonify({'error': 'No data'})
@@ -168,6 +233,7 @@ def api_ml_train_general():
 @app.route('/api/stock/<code>/fundamental')
 def api_fundamental(code):
     """Get fundamental data for a stock."""
+    code = require_valid_code(code)
     quote = data_service.get_realtime_quote(code)
     price = quote.get('price', 0) if quote else 0
 
@@ -192,8 +258,9 @@ def safe_round(val, decimals=2):
 @app.route('/api/stock/<code>/kline')
 def api_kline(code):
     """Get K-line data for charting."""
+    code = require_valid_code(code)
     import math
-    days = request.args.get('days', 60, type=int)
+    days = min(request.args.get('days', 60, type=int), 500)  # Cap at 500 days
     df = data_service.get_stock_kline(code, days=days)
 
     if df.empty:
@@ -278,6 +345,7 @@ def api_czsc_status():
 @app.route('/api/stock/<code>/czsc')
 def api_czsc_combined(code):
     """Get combined CZSC analysis for a stock."""
+    code = require_valid_code(code)
     if not czsc_service.is_czsc_available():
         return jsonify({
             'available': False,
@@ -299,6 +367,7 @@ def api_czsc_combined(code):
 @app.route('/api/stock/<code>/czsc/chan')
 def api_czsc_chan(code):
     """Get detailed Chan analysis (strokes, fractals)."""
+    code = require_valid_code(code)
     if not czsc_service.is_czsc_available():
         return jsonify({
             'has_data': False,
@@ -320,6 +389,7 @@ def api_czsc_chan(code):
 @app.route('/api/stock/<code>/czsc/signals')
 def api_czsc_signals(code):
     """Get CZSC technical signals."""
+    code = require_valid_code(code)
     if not czsc_service.is_czsc_available():
         return jsonify({
             'has_data': False,
@@ -372,6 +442,7 @@ def api_market_breadth():
 @app.route('/api/stock/<code>/margin')
 def api_margin(code):
     """Get margin trading signal for a stock."""
+    code = require_valid_code(code)
     signal = market_service.get_margin_signal(code)
     return jsonify(signal)
 
@@ -391,6 +462,7 @@ def api_cyq(code):
     - percent_chips: Price ranges containing 70%/90% of chips
     - signal: Trading signal based on chip distribution
     """
+    code = require_valid_code(code)
     from services import cyq_service
     df = data_service.get_stock_kline(code, days=250)
     if df.empty:
@@ -414,6 +486,7 @@ def api_strategies(code):
     - turtle_trade: Breakout above 60-day high
     - low_atr: Low volatility steady growth
     """
+    code = require_valid_code(code)
     from services import strategy_service
     df = data_service.get_stock_kline(code, days=300)
     if df.empty:
@@ -441,6 +514,7 @@ def api_new_indicators(code):
     - mfi: Money flow index
     - vhf: Trend vs ranging filter
     """
+    code = require_valid_code(code)
     df = data_service.get_stock_kline(code)
     if df.empty:
         return jsonify({'error': 'No data'})
@@ -561,6 +635,7 @@ def api_new_indicators(code):
 @app.route('/api/stock/<code>/52week')
 def api_52week(code):
     """Get 52-week high/low data."""
+    code = require_valid_code(code)
     df = data_service.get_stock_kline(code, days=250)
     if df.empty:
         return jsonify({'error': 'No data'})
@@ -601,6 +676,7 @@ def api_ai_analysis(code):
         "api_key": "..."  // User's API key (OpenAI, Claude, etc.)
     }
     """
+    code = require_valid_code(code)
     from services import ai_service, cyq_service, strategy_service
 
     # Get API key from request
@@ -689,6 +765,7 @@ def api_cache_stats():
 @app.route('/api/stock/<code>/patterns')
 def api_candlestick_patterns(code):
     """Get candlestick pattern analysis for a stock."""
+    code = require_valid_code(code)
     df = data_service.get_stock_kline(code, days=60)
     if df.empty:
         return jsonify({'error': 'No data'})
@@ -701,6 +778,7 @@ def api_candlestick_patterns(code):
 @app.route('/api/stock/<code>/data-freshness')
 def api_data_freshness(code):
     """Get data freshness information for a stock."""
+    code = require_valid_code(code)
     from services import market_status_service
     df = data_service.get_stock_kline(code, days=5)
     if df.empty:
@@ -765,9 +843,10 @@ def api_watchlist_correlation():
     if not codes_param:
         return jsonify({'error': 'Provide codes via ?codes=600519,000858,...'})
 
-    codes = [c.strip() for c in codes_param.split(',') if c.strip()][:10]
+    # Validate and filter stock codes
+    codes = [c.strip() for c in codes_param.split(',') if validate_stock_code(c.strip())][:10]
     if len(codes) < 2:
-        return jsonify({'error': 'Need at least 2 stocks'})
+        return jsonify({'error': 'Need at least 2 valid stock codes'})
 
     def get_returns(code):
         df = data_service.get_stock_kline(code, days=120)
@@ -810,6 +889,7 @@ def api_watchlist_correlation():
 @app.route('/api/stock/<code>/historical-accuracy')
 def api_historical_accuracy(code):
     """Get historical signal accuracy for a stock."""
+    code = require_valid_code(code)
     result = signal_service.backtest_signal(code, lookback_days=60)
     if result.get('error'):
         return jsonify(result)
