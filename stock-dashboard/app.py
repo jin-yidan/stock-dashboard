@@ -34,6 +34,28 @@ db_service.init_db()
 data_service.init_stock_list()  # Load stock list in background
 
 
+@app.route('/api/debug/status')
+def api_debug_status():
+    """Debug endpoint to check adata status."""
+    result = {'adata_installed': False, 'adata_working': False, 'error': None}
+    try:
+        import adata
+        result['adata_installed'] = True
+        result['adata_version'] = getattr(adata, '__version__', 'unknown')
+        # Test a simple API call
+        df = adata.stock.info.all_code()
+        if df is not None and not df.empty:
+            result['adata_working'] = True
+            result['stock_count'] = len(df)
+        else:
+            result['error'] = 'all_code returned empty'
+    except ImportError as e:
+        result['error'] = f'Import error: {str(e)}'
+    except Exception as e:
+        result['error'] = f'API error: {str(e)}'
+    return jsonify(result)
+
+
 @app.route('/')
 def index():
     """Home page with stock input."""
