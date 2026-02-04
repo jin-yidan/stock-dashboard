@@ -11,7 +11,7 @@ A modern technical analysis tool for Chinese A-share stocks.
 <img width="1512" height="982" alt="Screenshot 2026-02-04 at 12 24 04" src="https://github.com/user-attachments/assets/efb19fbd-1491-4e7e-b839-44ae7a7d77c7" />
 
 
-## 实时日k线
+## 实时k线
 <img width="1512" height="982" alt="Screenshot 2026-02-04 at 12 24 16" src="https://github.com/user-attachments/assets/d0e2a6fc-bf7a-446c-ab0a-5bbf70359e8b" />
 
 
