@@ -21,8 +21,8 @@ This dashboard helps you analyze Chinese stocks with:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/jin-yidan/stock.git
-cd stock/stock-dashboard
+git clone https://github.com/jin-yidan/stock-dashboard.git
+cd stock-dashboard/stock-dashboard
 
 # 2. Install dependencies
 pip install -r requirements.txt
