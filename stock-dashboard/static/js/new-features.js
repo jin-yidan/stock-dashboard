@@ -12,30 +12,20 @@ function loadMarketStatus() {
 
             const statusClass = data.is_open ? 'open' : 'closed';
             el.className = 'market-badge ' + statusClass;
-            // Show status with Beijing time
-            el.textContent = (data.status_cn || data.status) + ' · 北京 ' + (data.beijing_time || '');
-            el.title = '北京时间: ' + (data.beijing_time || '') + '\n本地时间: ' + (data.local_time || '');
+            el.textContent = data.status_cn || data.status;
+
+            // Update Beijing time box
+            const timeEl = document.getElementById('beijing-time');
+            if (timeEl && data.beijing_time) {
+                timeEl.textContent = '北京时间 ' + data.beijing_time;
+            }
         })
         .catch(err => console.log('Market status error:', err));
 }
 
-// Load Data Freshness
+// Load Data Freshness - disabled
 function loadDataFreshness() {
-    const stockCode = window.stockCode;
-    if (!stockCode) return;
-
-    fetch('/api/stock/' + stockCode + '/data-freshness')
-        .then(r => r.json())
-        .then(data => {
-            const el = document.getElementById('data-freshness');
-            if (!el) return;
-
-            const statusClass = data.fresh ? 'fresh' : 'stale';
-            el.className = 'freshness-badge ' + statusClass;
-            el.textContent = data.age || data.status_cn;
-            el.title = '数据日期: ' + (data.last_data_date || '未知');
-        })
-        .catch(err => console.log('Freshness error:', err));
+    // Removed - no longer showing data freshness badge
 }
 
 // Load Candlestick Patterns
