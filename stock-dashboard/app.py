@@ -287,12 +287,18 @@ def api_kline(code):
         is_up = change_pct >= 0
 
         # K-line with color based on daily change_pct (not close vs open)
+        # Ensure low <= high (adata sometimes returns them swapped)
+        raw_low = row['low']
+        raw_high = row['high']
+        actual_low = min(raw_low, raw_high)
+        actual_high = max(raw_low, raw_high)
+
         kline_data.append({
             'value': [
                 safe_round(row['open']),
                 safe_round(row['close']),
-                safe_round(row['low']),
-                safe_round(row['high'])
+                safe_round(actual_low),
+                safe_round(actual_high)
             ],
             'itemStyle': {
                 'color': '#ef5350' if is_up else '#26a69a',
