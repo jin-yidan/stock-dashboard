@@ -729,9 +729,12 @@ function renderKlineChart(data) {
                 const kline = params.find(p => p.seriesName === 'K线');
                 if (!kline) return '';
                 // Data can be array or object with value property
-                // ECharts format: [open, close, low, high]
-                const d = kline.data.value || kline.data;
+                let d = kline.data.value || kline.data;
                 if (!d || !Array.isArray(d)) return '';
+                // ECharts adds index as first element, skip it if array has 5 elements
+                if (d.length === 5) {
+                    d = d.slice(1);  // Remove the index, keep [open, close, low, high]
+                }
                 // Fix swapped high/low at display time
                 const low = Math.min(d[2], d[3]);
                 const high = Math.max(d[2], d[3]);

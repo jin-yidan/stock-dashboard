@@ -98,9 +98,14 @@ def get_market_status():
     current_time = now.time()
     current_date = now.date()
 
+    # Get local time (server/user timezone)
+    local_now = datetime.now()
+
     result = {
         'current_time': now.strftime('%Y-%m-%d %H:%M:%S'),
         'current_time_cn': now.strftime('%H:%M'),
+        'beijing_time': now.strftime('%H:%M'),
+        'local_time': local_now.strftime('%H:%M'),
         'timezone': 'Asia/Shanghai',
     }
 

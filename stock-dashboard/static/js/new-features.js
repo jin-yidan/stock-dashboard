@@ -12,8 +12,9 @@ function loadMarketStatus() {
 
             const statusClass = data.is_open ? 'open' : 'closed';
             el.className = 'market-badge ' + statusClass;
-            el.textContent = data.status_cn || data.status;
-            el.title = data.message || '';
+            // Show status with Beijing time
+            el.textContent = (data.status_cn || data.status) + ' · 北京 ' + (data.beijing_time || '');
+            el.title = '北京时间: ' + (data.beijing_time || '') + '\n本地时间: ' + (data.local_time || '');
         })
         .catch(err => console.log('Market status error:', err));
 }
