@@ -116,13 +116,23 @@ function loadHistoricalAccuracy() {
             valueEl.className = 'accuracy-value ' + reliabilityClass;
 
             if (signalsEl) {
-                const buyInfo = data.buy_signals ? `买${data.buy_signals}` : '';
-                const sellInfo = data.sell_signals ? `卖${data.sell_signals}` : '';
-                const parts = [buyInfo, sellInfo].filter(x => x);
-                signalsEl.textContent = parts.length > 0 ? parts.join('/') + ' 个信号' : (data.total_signals || 0) + ' 个信号';
+                const total = data.total_signals || 0;
+                const buyCount = data.buy_signals || 0;
+                const sellCount = data.sell_signals || 0;
+                if (buyCount > 0 && sellCount > 0) {
+                    signalsEl.textContent = `${total} 个 (买入${buyCount} / 卖出${sellCount})`;
+                } else if (buyCount > 0) {
+                    signalsEl.textContent = `${total} 个买入信号`;
+                } else if (sellCount > 0) {
+                    signalsEl.textContent = `${total} 个卖出信号`;
+                } else {
+                    signalsEl.textContent = `${total} 个`;
+                }
             }
             if (periodEl && data.period) {
-                periodEl.textContent = data.period;
+                // Make period more descriptive
+                const periodText = data.period.replace(/(\d+)天/, '$1 天');
+                periodEl.textContent = periodText;
             }
 
             section.style.display = 'block';

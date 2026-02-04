@@ -145,15 +145,24 @@
     <div class="row mb-4" id="accuracy-section" style="display:none;">
         <div class="col-12">
             <div class="accuracy-box">
-                <div class="accuracy-header">信号准确率</div>
+                <div class="accuracy-header">
+                    <span>信号准确率</span>
+                    <span class="accuracy-hint" title="基于历史数据回测，统计系统发出买/卖信号后的实际涨跌情况">ⓘ</span>
+                </div>
                 <div class="accuracy-content">
                     <div class="accuracy-main">
                         <span id="accuracy-value" class="accuracy-value">--</span>
                         <span class="accuracy-label">历史准确率</span>
                     </div>
                     <div class="accuracy-detail">
-                        <span id="accuracy-signals">-- 个信号</span>
-                        <span id="accuracy-period">120天回测</span>
+                        <div class="accuracy-detail-row">
+                            <span class="accuracy-detail-label">回测周期</span>
+                            <span id="accuracy-period" class="accuracy-detail-value">--</span>
+                        </div>
+                        <div class="accuracy-detail-row">
+                            <span class="accuracy-detail-label">信号数量</span>
+                            <span id="accuracy-signals" class="accuracy-detail-value">--</span>
+                        </div>
                     </div>
                 </div>
             </div>
