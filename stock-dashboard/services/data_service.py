@@ -60,12 +60,14 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
 
     cache_key = f"kline_{stock_code}_{days}"
     cached = _get_cached(cache_key)
-    if cached is not None:
+    if cached is not None and not cached.empty:
         return cached
 
     try:
-        # Use baidu_market
+        # Try baidu_market first, fall back to east_market if empty
         df = adata.stock.market.baidu_market.get_market(stock_code=stock_code)
+        if df is None or df.empty:
+            df = adata.stock.market.east_market.get_market(stock_code=stock_code)
 
         if df is None or df.empty:
             return pd.DataFrame()
