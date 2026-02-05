@@ -339,7 +339,7 @@ function escapeHtml(text) {
 }
 
 // Fetch with timeout helper
-function fetchWithTimeout(url, options = {}, timeout = 15000) {
+function fetchWithTimeout(url, options = {}, timeout = 90000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
@@ -386,7 +386,7 @@ function toggleWatchlist() {
 
 // Load signal data
 function loadSignalData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/signal', {}, 20000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/signal', {}, 90000)
         .then(r => r.json())
         .then(data => {
             console.log('Signal data:', data);  // Debug
@@ -504,7 +504,7 @@ function loadMLPrediction() {
     document.getElementById('ml-content').innerHTML = '<span class="loading-spinner"></span><span class="loading-text">正在分析...</span>';
 
     // First try to predict with existing model
-    fetchWithTimeout('/api/stock/' + stockCode + '/ml/predict', {}, 15000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/ml/predict', {}, 90000)
         .then(r => r.json())
         .then(data => {
             if (data.error) {
@@ -536,7 +536,7 @@ function loadMLPrediction() {
 
 // Load fundamental data
 function loadFundamentalData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/fundamental', {}, 15000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/fundamental', {}, 90000)
         .then(r => r.json())
         .then(data => {
             if (data && data.has_data) {
@@ -591,7 +591,7 @@ function showFundamental(fund) {
 
 // Load CZSC (Chan Theory) data
 function loadCzscData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/czsc', {}, 15000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/czsc', {}, 90000)
         .then(r => r.json())
         .then(data => {
             if (!data.available) {
@@ -645,7 +645,7 @@ function loadCzscData() {
 
 // Load quote data
 function loadQuoteData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/quote', {}, 10000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/quote', {}, 90000)
         .then(r => r.json())
         .then(data => {
             if (!data || data.error) {
@@ -871,7 +871,7 @@ function startQuoteRefresh() {
 
 // Load 52-week data
 function load52WeekData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/52week', {}, 10000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/52week', {}, 90000)
         .then(r => r.json())
         .then(data => {
             if (data.error) return;
@@ -896,7 +896,7 @@ function load52WeekData() {
 
 // Load CYQ Chip Distribution data
 function loadCyqData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/cyq', {}, 15000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/cyq', {}, 90000)
         .then(r => r.json())
         .then(data => {
             if (!data.available) {
@@ -959,7 +959,7 @@ function loadCyqData() {
 
 // Load Trading Strategies data
 function loadStrategyData() {
-    fetchWithTimeout('/api/stock/' + stockCode + '/strategies', {}, 15000)
+    fetchWithTimeout('/api/stock/' + stockCode + '/strategies', {}, 90000)
         .then(r => r.json())
         .then(data => {
             const triggered = data.triggered || [];
