@@ -985,10 +985,10 @@ def generate_signal(stock_code):
         if czsc_service.is_czsc_available():
             futures[executor.submit(analyze_czsc, stock_code, df)] = 'czsc'
 
-        for future in as_completed(futures, timeout=8):
+        for future in as_completed(futures, timeout=30):
             name = futures[future]
             try:
-                result = future.result(timeout=5)
+                result = future.result(timeout=15)
                 if name == 'capital':
                     capital_result = result
                 elif name == 'czsc':

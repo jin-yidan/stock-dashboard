@@ -16,7 +16,7 @@ except ImportError:
 _cache = {}
 _cache_time = {}
 CACHE_TTL = 1800  # 30 minutes - kline data doesn't change frequently
-API_TIMEOUT_SECONDS = 6  # Fail fast if external API is slow/unreachable
+API_TIMEOUT_SECONDS = 30  # Allow more time for slow external APIs
 
 def _get_cached(key):
     """Get cached value if not expired."""

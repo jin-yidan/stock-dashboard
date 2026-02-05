@@ -185,7 +185,7 @@ def get_fundamental_summary(stock_code, current_price):
             executor.submit(get_concept, stock_code): 'concept',
         }
 
-        for future in as_completed(futures, timeout=10):
+        for future in as_completed(futures, timeout=30):
             name = futures[future]
             try:
                 results[name] = future.result()

@@ -90,7 +90,7 @@ function escapeHtml(text) {
 }
 
 // Fetch with timeout helper
-function fetchWithTimeout(url, options = {}, timeout = 10000) {
+function fetchWithTimeout(url, options = {}, timeout = 60000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     return fetch(url, { ...options, signal: controller.signal })

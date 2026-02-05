@@ -173,7 +173,7 @@ def api_quotes_batch():
         futures = {executor.submit(get_quote_safe, code): code for code in codes}
         for future in futures:
             try:
-                code, quote = future.result(timeout=8)
+                code, quote = future.result(timeout=30)
                 quotes[code] = quote
             except Exception:
                 quotes[futures[future]] = {'error': 'Timeout'}
@@ -911,7 +911,7 @@ def api_sector_rotation():
         results = []
         for future in futures:
             try:
-                results.append(future.result(timeout=15))
+                results.append(future.result(timeout=30))
             except Exception:
                 pass
 
@@ -946,7 +946,7 @@ def api_watchlist_correlation():
         stock_data = {}
         for future in futures:
             try:
-                result = future.result(timeout=10)
+                result = future.result(timeout=30)
                 if result:
                     stock_data[futures[future]] = result
             except Exception:
