@@ -41,6 +41,67 @@ def _call_with_timeout(fn, timeout_seconds, *args, **kwargs):
         except Exception as e:
             return None, str(e)
 
+def _get_kline_from_tencent(stock_code, days=120):
+    """Fallback: fetch kline data from Tencent API (more reliable for some stocks)."""
+    import requests
+    import json
+    try:
+        # Determine market prefix: sz for 0/3, sh for 6
+        prefix = 'sh' if stock_code.startswith('6') else 'sz'
+        url = 'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get'
+        params = {
+            '_var': 'kline_dayqfq',
+            'param': f'{prefix}{stock_code},day,,,{days},qfq'
+        }
+        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'}
+
+        r = requests.get(url, params=params, headers=headers, timeout=30)
+        if r.status_code != 200:
+            return pd.DataFrame()
+
+        text = r.text
+        if 'kline_dayqfq=' not in text:
+            return pd.DataFrame()
+
+        json_str = text.split('kline_dayqfq=')[1]
+        data = json.loads(json_str)
+
+        stock_key = f'{prefix}{stock_code}'
+        if 'data' not in data or stock_key not in data['data']:
+            return pd.DataFrame()
+
+        stock_data = data['data'][stock_key]
+        klines = stock_data.get('qfqday', stock_data.get('day', []))
+
+        if not klines:
+            return pd.DataFrame()
+
+        # Parse kline data: [date, open, close, high, low, volume]
+        rows = []
+        for k in klines:
+            if len(k) >= 6:
+                rows.append({
+                    'trade_date': k[0],
+                    'open': float(k[1]),
+                    'close': float(k[2]),
+                    'high': float(k[3]),
+                    'low': float(k[4]),
+                    'volume': float(k[5]),
+                    'amount': 0,  # Tencent API doesn't provide amount
+                    'change_pct': 0  # Will be calculated later if needed
+                })
+
+        df = pd.DataFrame(rows)
+        # Calculate change_pct
+        if len(df) > 1:
+            df['change_pct'] = df['close'].pct_change() * 100
+            df['change_pct'] = df['change_pct'].fillna(0)
+
+        return df
+    except Exception as e:
+        print(f"Tencent API error for {stock_code}: {e}")
+        return pd.DataFrame()
+
 def _get_kline_from_db(stock_code, days):
     """Fallback: load kline data from local DB cache."""
     rows = db_service.get_daily_data(stock_code, days=days)
@@ -108,6 +169,10 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
                 API_TIMEOUT_SECONDS,
                 stock_code=stock_code
             )
+
+        # Third fallback: Tencent API (more reliable for some stocks)
+        if df is None or df.empty:
+            df = _get_kline_from_tencent(stock_code, days=max(days, 120))
 
         if df is None or df.empty:
             return _get_kline_from_db(stock_code, days)
