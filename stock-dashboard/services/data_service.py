@@ -2,6 +2,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from config import DEFAULT_KLINE_DAYS
 from services import db_service
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 # Try to import adata - may not be available on Vercel
 try:
@@ -15,6 +16,7 @@ except ImportError:
 _cache = {}
 _cache_time = {}
 CACHE_TTL = 1800  # 30 minutes - kline data doesn't change frequently
+API_TIMEOUT_SECONDS = 6  # Fail fast if external API is slow/unreachable
 
 def _get_cached(key):
     """Get cached value if not expired."""
@@ -27,6 +29,36 @@ def _set_cached(key, value):
     """Set cache value."""
     _cache[key] = value
     _cache_time[key] = datetime.now()
+
+def _call_with_timeout(fn, timeout_seconds, *args, **kwargs):
+    """Call a function with timeout. Returns (result, error_str)."""
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(fn, *args, **kwargs)
+        try:
+            return future.result(timeout=timeout_seconds), None
+        except FuturesTimeoutError:
+            return None, f"timeout after {timeout_seconds}s"
+        except Exception as e:
+            return None, str(e)
+
+def _get_kline_from_db(stock_code, days):
+    """Fallback: load kline data from local DB cache."""
+    rows = db_service.get_daily_data(stock_code, days=days)
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+
+    # Normalize types
+    df['trade_date'] = pd.to_datetime(df['trade_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+    for col in ['open', 'close', 'high', 'low', 'volume', 'amount', 'change_pct']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # DB returns latest first; sort ascending for indicator calculations
+    df = df.sort_values('trade_date').reset_index(drop=True)
+    return df
 
 def get_all_stocks():
     """Get list of all A-share stocks."""
@@ -56,7 +88,7 @@ def get_all_stocks():
 def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
     """Get historical K-line data for a stock using East Money API."""
     if not HAS_ADATA:
-        return pd.DataFrame()
+        return _get_kline_from_db(stock_code, days)
 
     cache_key = f"kline_{stock_code}_{days}"
     cached = _get_cached(cache_key)
@@ -64,13 +96,21 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
         return cached
 
     try:
-        # Try baidu_market first, fall back to east_market if empty
-        df = adata.stock.market.baidu_market.get_market(stock_code=stock_code)
+        # Try baidu_market first, fall back to east_market if empty or timeout
+        df, err = _call_with_timeout(
+            adata.stock.market.baidu_market.get_market,
+            API_TIMEOUT_SECONDS,
+            stock_code=stock_code
+        )
         if df is None or df.empty:
-            df = adata.stock.market.east_market.get_market(stock_code=stock_code)
+            df, err = _call_with_timeout(
+                adata.stock.market.east_market.get_market,
+                API_TIMEOUT_SECONDS,
+                stock_code=stock_code
+            )
 
         if df is None or df.empty:
-            return pd.DataFrame()
+            return _get_kline_from_db(stock_code, days)
 
         # Convert columns to proper types
         df['trade_date'] = pd.to_datetime(df['trade_date']).dt.strftime('%Y-%m-%d')
@@ -84,6 +124,8 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
 
         # Sort by date and get recent days
         df = df.sort_values('trade_date').reset_index(drop=True)
+        # Save full data to DB cache before trimming
+        db_service.save_daily_data(stock_code, df)
         df = df.tail(days)
 
         _set_cached(cache_key, df)
@@ -91,7 +133,7 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
 
     except Exception as e:
         print(f"Error fetching kline for {stock_code}: {e}")
-        return pd.DataFrame()
+        return _get_kline_from_db(stock_code, days)
 
 def get_realtime_quote(stock_code):
     """Get realtime quote for a stock.
