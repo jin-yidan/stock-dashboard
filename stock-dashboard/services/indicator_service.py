@@ -204,13 +204,25 @@ def calculate_supertrend(df, period=14, multiplier=3):
 
     # Initialize arrays for stateful calculation
     size = len(df)
-    ub = np.zeros(size)
-    lb = np.zeros(size)
-    st = np.zeros(size)
-    direction = np.zeros(size)  # 1 = bullish, -1 = bearish
+    ub = np.full(size, np.nan)
+    lb = np.full(size, np.nan)
+    st = np.full(size, np.nan)
+    direction = np.full(size, np.nan)
 
-    for i in range(size):
-        if i == 0:
+    # Find first valid index (where ATR is not NaN)
+    first_valid = df['atr'].first_valid_index()
+    if first_valid is None:
+        df['supertrend'] = st
+        df['supertrend_ub'] = ub
+        df['supertrend_lb'] = lb
+        df['supertrend_direction'] = direction
+        return df
+
+    # Convert to positional index
+    start_idx = df.index.get_loc(first_valid) if first_valid in df.index else 0
+
+    for i in range(start_idx, size):
+        if i == start_idx:
             ub[i] = df['st_basic_ub'].iloc[i]
             lb[i] = df['st_basic_lb'].iloc[i]
             st[i] = ub[i] if df['close'].iloc[i] <= ub[i] else lb[i]
@@ -224,6 +236,14 @@ def calculate_supertrend(df, period=14, multiplier=3):
         last_st = st[i - 1]
         curr_basic_ub = df['st_basic_ub'].iloc[i]
         curr_basic_lb = df['st_basic_lb'].iloc[i]
+
+        # Skip if previous values are NaN
+        if np.isnan(last_ub) or np.isnan(last_lb) or np.isnan(last_st):
+            ub[i] = curr_basic_ub
+            lb[i] = curr_basic_lb
+            st[i] = curr_basic_ub if curr_close <= curr_basic_ub else curr_basic_lb
+            direction[i] = -1 if curr_close <= curr_basic_ub else 1
+            continue
 
         # Upper band: can only move DOWN (tightens in uptrend)
         if curr_basic_ub < last_ub or last_close > last_ub:

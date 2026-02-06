@@ -201,17 +201,57 @@ def get_northbound_flow(days=20):
     Get northbound capital flow (沪股通+深股通).
     This is "smart money" from foreign institutions.
 
-    Note: This data source may not be available in all adata versions.
-    Returns empty DataFrame when unavailable.
+    Fetches data from East Money datacenter API.
     """
+    import requests
+
     cache_key = f"northbound_{days}"
     cached = _get_cached(cache_key)
     if cached is not None:
         return cached
 
-    # Note: adata.stock.market.get_north_flow() is not available in current version
-    # Return empty DataFrame - the signal functions will handle this gracefully
-    return pd.DataFrame()
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'}
+        url = 'https://datacenter-web.eastmoney.com/api/data/v1/get'
+        params = {
+            'reportName': 'RPT_MUTUAL_QUOTA',
+            'columns': 'ALL',
+            'pageSize': days,
+            'sortColumns': 'TRADE_DATE',
+            'sortTypes': -1,
+            'source': 'WEB',
+            'client': 'WEB',
+            'filter': '(MUTUAL_TYPE="001")'  # 001 = northbound total (沪股通+深股通)
+        }
+
+        r = requests.get(url, params=params, headers=headers, timeout=15)
+        if r.status_code != 200:
+            return pd.DataFrame()
+
+        data = r.json()
+        if 'result' not in data or not data['result'] or 'data' not in data['result']:
+            return pd.DataFrame()
+
+        records = data['result']['data']
+        rows = []
+        for rec in records:
+            rows.append({
+                'trade_date': rec.get('TRADE_DATE', '')[:10],
+                'net_flow': rec.get('NET_DEAL_AMT', 0) or 0,  # 净买入额
+                'buy_amt': rec.get('BUY_AMT', 0) or 0,
+                'sell_amt': rec.get('SELL_AMT', 0) or 0,
+            })
+
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df = df.sort_values('trade_date').reset_index(drop=True)
+            _set_cached(cache_key, df)
+
+        return df
+
+    except Exception as e:
+        print(f"Error fetching northbound flow: {e}")
+        return pd.DataFrame()
 
 
 def get_northbound_signal():
