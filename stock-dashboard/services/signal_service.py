@@ -1133,23 +1133,26 @@ def backtest_signal(stock_code, lookback_days=60):
     df = indicator_service.calculate_all(df)
     results = []
 
+    # Use current regime weights for backtest (align with live signal weighting)
+    weights, _ = get_current_weights()
+
     # Generate signals for each day and check forward returns
     for i in range(30, len(df) - 5):  # Need 5 days forward
         day_df = df.iloc[:i+1].copy()
 
         # Use all indicators with proper weights (matching generate_signal)
-        ma = indicator_service.get_ma_trend(day_df)['score'] * WEIGHTS['ma']
-        macd = indicator_service.get_macd_signal(day_df)['score'] * WEIGHTS['macd']
-        momentum = indicator_service.get_momentum_signal(day_df)['score'] * WEIGHTS['momentum']
-        kdj = indicator_service.get_kdj_signal(day_df)['score'] * WEIGHTS['kdj']
-        boll = indicator_service.get_bollinger_signal(day_df)['score'] * WEIGHTS['bollinger']
-        rsi = indicator_service.get_rsi_signal(day_df)['score'] * WEIGHTS['rsi']
-        vol = indicator_service.get_volume_signal(day_df)['score'] * WEIGHTS['volume']
-        weekly = indicator_service.get_weekly_trend(day_df)['score'] * WEIGHTS['weekly']
+        ma = indicator_service.get_ma_trend(day_df)['score'] * weights['ma']
+        macd = indicator_service.get_macd_signal(day_df)['score'] * weights['macd']
+        momentum = indicator_service.get_momentum_signal(day_df)['score'] * weights['momentum']
+        kdj = indicator_service.get_kdj_signal(day_df)['score'] * weights['kdj']
+        boll = indicator_service.get_bollinger_signal(day_df)['score'] * weights['bollinger']
+        rsi = indicator_service.get_rsi_signal(day_df)['score'] * weights['rsi']
+        vol = indicator_service.get_volume_signal(day_df)['score'] * weights['volume']
+        weekly = indicator_service.get_weekly_trend(day_df)['score'] * weights['weekly']
 
         # Include new indicators (supertrend, wave_trend)
-        supertrend = indicator_service.get_supertrend_signal(day_df)['score'] * WEIGHTS.get('supertrend', 0.18)
-        wave_trend = indicator_service.get_wave_trend_signal(day_df)['score'] * WEIGHTS.get('wave_trend', 0.10)
+        supertrend = indicator_service.get_supertrend_signal(day_df)['score'] * weights.get('supertrend', 0.18)
+        wave_trend = indicator_service.get_wave_trend_signal(day_df)['score'] * weights.get('wave_trend', 0.10)
 
         score = ma + macd + momentum + kdj + boll + rsi + vol + weekly + supertrend + wave_trend
 

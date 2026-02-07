@@ -14,21 +14,26 @@ except ImportError:
 
 # Simple in-memory cache
 _cache = {}
-_cache_time = {}
+_cache_expiry = {}
 CACHE_TTL = 1800  # 30 minutes - kline data doesn't change frequently
+QUOTE_TTL = 60    # 1 minute for realtime-ish quotes
+NAME_TTL = 86400  # 24 hours for stock names
 API_TIMEOUT_SECONDS = 30  # Allow more time for slow external APIs
 
 def _get_cached(key):
     """Get cached value if not expired."""
-    if key in _cache and key in _cache_time:
-        if (datetime.now() - _cache_time[key]).seconds < CACHE_TTL:
+    if key in _cache and key in _cache_expiry:
+        if datetime.now() <= _cache_expiry[key]:
             return _cache[key]
+        # Expired - cleanup
+        _cache.pop(key, None)
+        _cache_expiry.pop(key, None)
     return None
 
-def _set_cached(key, value):
-    """Set cache value."""
+def _set_cached(key, value, ttl=CACHE_TTL):
+    """Set cache value with TTL."""
     _cache[key] = value
-    _cache_time[key] = datetime.now()
+    _cache_expiry[key] = datetime.now() + timedelta(seconds=ttl)
 
 def _call_with_timeout(fn, timeout_seconds, *args, **kwargs):
     """Call a function with timeout. Returns (result, error_str)."""
@@ -203,19 +208,58 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
 def get_realtime_quote(stock_code):
     """Get realtime quote for a stock.
 
-    Optimized: Uses kline data directly instead of slow list_market_current API.
+    Tries realtime API first, falls back to latest kline close if unavailable.
     """
     cache_key = f"quote_{stock_code}"
     cached = _get_cached(cache_key)
     if cached is not None:
         return cached
 
-    # Use kline data directly - it's faster and already has all the data we need
-    return _get_quote_from_kline(stock_code)
+    # Try realtime API first (if available)
+    quote = _get_quote_from_realtime(stock_code)
+    if quote:
+        _set_cached(cache_key, quote, ttl=QUOTE_TTL)
+        return quote
+
+    # Fallback to latest kline close (not realtime)
+    quote = _get_quote_from_kline(stock_code)
+    if quote:
+        _set_cached(cache_key, quote, ttl=QUOTE_TTL)
+    return quote
+
+def _get_quote_from_realtime(stock_code):
+    """Try to get realtime quote from adata list_market_current."""
+    if not HAS_ADATA:
+        return None
+    try:
+        df, err = _call_with_timeout(
+            adata.stock.market.list_market_current,
+            API_TIMEOUT_SECONDS,
+            code_list=[stock_code]
+        )
+        if df is None or df.empty:
+            return None
+        row = df.iloc[0]
+        result = {
+            'stock_code': stock_code,
+            'price': _safe_float(row.get('price', 0)),
+            'change_pct': _safe_float(row.get('change_pct', 0)),
+            'open': _safe_float(row.get('open', 0)),
+            'high': _safe_float(row.get('high', 0)),
+            'low': _safe_float(row.get('low', 0)),
+            'volume': _safe_int(row.get('volume', 0)),
+            'amount': _safe_float(row.get('amount', 0)),
+            'pre_close': _safe_float(row.get('pre_close', 0)),
+            'is_realtime': True,
+            'data_source': 'realtime'
+        }
+        return result
+    except Exception as e:
+        print(f"Error getting realtime quote for {stock_code}: {e}")
+        return None
 
 def _get_quote_from_kline(stock_code):
     """Fallback: get quote from latest kline data."""
-    cache_key = f"quote_{stock_code}"
     try:
         df = get_stock_kline(stock_code, days=10)
         if df.empty:
@@ -226,20 +270,38 @@ def _get_quote_from_kline(stock_code):
 
         result = {
             'stock_code': stock_code,
-            'price': float(row.get('close', 0)),
-            'change_pct': float(row.get('change_pct', 0)),
-            'open': float(row.get('open', 0)),
-            'high': float(row.get('high', 0)),
-            'low': float(row.get('low', 0)),
-            'volume': int(row.get('volume', 0)),
-            'amount': float(row.get('amount', 0)),
-            'pre_close': float(prev_row.get('close', 0))
+            'price': _safe_float(row.get('close', 0)),
+            'change_pct': _safe_float(row.get('change_pct', 0)),
+            'open': _safe_float(row.get('open', 0)),
+            'high': _safe_float(row.get('high', 0)),
+            'low': _safe_float(row.get('low', 0)),
+            'volume': _safe_int(row.get('volume', 0)),
+            'amount': _safe_float(row.get('amount', 0)),
+            'pre_close': _safe_float(prev_row.get('close', 0)),
+            'is_realtime': False,
+            'data_source': 'kline',
+            'last_trade_date': str(row.get('trade_date', ''))[:10]
         }
-        _set_cached(cache_key, result)
         return result
     except Exception as e:
         print(f"Error getting quote from kline for {stock_code}: {e}")
         return None
+
+def _safe_float(val, default=0.0):
+    try:
+        if val is None or pd.isna(val):
+            return default
+        return float(val)
+    except Exception:
+        return default
+
+def _safe_int(val, default=0):
+    try:
+        if val is None or pd.isna(val):
+            return default
+        return int(val)
+    except Exception:
+        return default
 
 def get_capital_flow(stock_code, days=5):
     """Get capital flow data for a stock."""
@@ -328,7 +390,7 @@ def get_stock_name(stock_code):
     info = db_service.get_stock_info(stock_code)
     if info:
         name = info.get('short_name', '')
-        _set_cached(cache_key, name)
+        _set_cached(cache_key, name, ttl=NAME_TTL)
         return name
 
     if HAS_ADATA:
@@ -339,7 +401,7 @@ def get_stock_name(stock_code):
                 name = df.iloc[0].get('short_name', '')
                 if name:
                     db_service.save_stock_info(stock_code, name, '')
-                    _set_cached(cache_key, name)
+                    _set_cached(cache_key, name, ttl=NAME_TTL)
                     return name
         except Exception as e:
             print(f"Error from list_market_current: {e}")
@@ -352,12 +414,12 @@ def get_stock_name(stock_code):
                 name = match.iloc[0].get('short_name', '')
                 exchange = match.iloc[0].get('exchange', '')
                 db_service.save_stock_info(stock_code, name, exchange)
-                _set_cached(cache_key, name)
+                _set_cached(cache_key, name, ttl=NAME_TTL)
                 return name
         except Exception as e:
             print(f"Error getting stock name from all_code: {e}")
 
-    _set_cached(cache_key, stock_code)
+    _set_cached(cache_key, stock_code, ttl=NAME_TTL)
     return stock_code
 
 def search_stocks(query, limit=10):

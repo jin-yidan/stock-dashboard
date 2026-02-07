@@ -21,7 +21,7 @@ CACHE_TTL = 3600  # 1 hour for fundamental data
 
 def _get_cached(key):
     if key in _cache and key in _cache_time:
-        if (datetime.now() - _cache_time[key]).seconds < CACHE_TTL:
+        if (datetime.now() - _cache_time[key]).total_seconds() < CACHE_TTL:
             return _cache[key]
     return None
 

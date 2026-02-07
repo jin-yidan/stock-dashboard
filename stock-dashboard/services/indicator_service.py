@@ -72,7 +72,8 @@ def calculate_volume_ma(df, period=20):
         return df
     df = df.copy()
     df['volume_ma'] = df['volume'].rolling(window=period).mean()
-    df['volume_ratio'] = df['volume'] / df['volume_ma']
+    df['volume_ratio'] = df['volume'] / df['volume_ma'].replace(0, np.nan)
+    df['volume_ratio'] = df['volume_ratio'].replace([np.inf, -np.inf], np.nan).fillna(1)
     return df
 
 def calculate_atr(df, period=14):
@@ -100,8 +101,9 @@ def calculate_kdj(df, n=9, m1=3, m2=3):
     low_n = df['low'].rolling(window=n).min()
     high_n = df['high'].rolling(window=n).max()
 
-    rsv = (df['close'] - low_n) / (high_n - low_n) * 100
-    rsv = rsv.fillna(50)
+    denom = (high_n - low_n).replace(0, np.nan)
+    rsv = (df['close'] - low_n) / denom * 100
+    rsv = rsv.replace([np.inf, -np.inf], np.nan).fillna(50)
 
     # K = 2/3 * prev_K + 1/3 * RSV
     df['kdj_k'] = rsv.ewm(alpha=1/m1, adjust=False).mean()
@@ -124,9 +126,11 @@ def calculate_bollinger(df, period=20, std_dev=2):
     df['boll_upper'] = df['boll_mid'] + std_dev * std
     df['boll_lower'] = df['boll_mid'] - std_dev * std
     # Bandwidth: (upper - lower) / mid * 100
-    df['boll_width'] = (df['boll_upper'] - df['boll_lower']) / df['boll_mid'] * 100
+    df['boll_width'] = (df['boll_upper'] - df['boll_lower']) / df['boll_mid'].replace(0, np.nan) * 100
     # %B: (close - lower) / (upper - lower)
-    df['boll_pct_b'] = (df['close'] - df['boll_lower']) / (df['boll_upper'] - df['boll_lower'])
+    df['boll_pct_b'] = (df['close'] - df['boll_lower']) / (df['boll_upper'] - df['boll_lower']).replace(0, np.nan)
+    df['boll_width'] = df['boll_width'].replace([np.inf, -np.inf], np.nan).fillna(0)
+    df['boll_pct_b'] = df['boll_pct_b'].replace([np.inf, -np.inf], np.nan).fillna(0.5)
 
     return df
 
@@ -157,14 +161,16 @@ def calculate_adx(df, period=14):
 
     # Smoothed averages
     atr = tr.rolling(window=period).mean()
-    plus_di = 100 * pd.Series(plus_dm).rolling(window=period).mean() / atr
-    minus_di = 100 * pd.Series(minus_dm).rolling(window=period).mean() / atr
+    atr_safe = atr.replace(0, np.nan)
+    plus_di = 100 * pd.Series(plus_dm).rolling(window=period).mean() / atr_safe
+    minus_di = 100 * pd.Series(minus_dm).rolling(window=period).mean() / atr_safe
 
     # ADX
-    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan)
     df['adx'] = dx.rolling(window=period).mean()
-    df['plus_di'] = plus_di
-    df['minus_di'] = minus_di
+    df['plus_di'] = plus_di.replace([np.inf, -np.inf], np.nan).fillna(0)
+    df['minus_di'] = minus_di.replace([np.inf, -np.inf], np.nan).fillna(0)
+    df['adx'] = df['adx'].replace([np.inf, -np.inf], np.nan).fillna(0)
 
     return df
 
@@ -1085,7 +1091,9 @@ def calculate_advanced_features(df):
     if len(df) >= 250:
         high_52w = df['high'].rolling(250).max()
         low_52w = df['low'].rolling(250).min()
-        df['position_52w'] = (df['close'] - low_52w) / (high_52w - low_52w) * 100
+        denom = (high_52w - low_52w).replace(0, np.nan)
+        df['position_52w'] = (df['close'] - low_52w) / denom * 100
+        df['position_52w'] = df['position_52w'].replace([np.inf, -np.inf], np.nan).fillna(50)
 
     # Consecutive up/down days
     df['up_day'] = (df['close'] > df['close'].shift(1)).astype(int)
@@ -1152,6 +1160,8 @@ def calculate_all(df, include_advanced=True):
         df = calculate_dma(df)              # Differential MA
         df = calculate_advanced_features(df)
 
+    # Sanitize any inf values
+    df.replace([np.inf, -np.inf], np.nan, inplace=True)
     return df
 
 def get_ma_trend(df):

@@ -9,6 +9,7 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier,
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import cross_val_score, TimeSeriesSplit
 from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.base import clone
 import joblib
 import os
 from datetime import datetime
@@ -36,28 +37,21 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'data', 'models')
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 
-def prepare_features(df, threshold=2.0, use_3class=False):
+def build_feature_frame(df, min_history=60):
     """
-    Prepare feature matrix from stock data with indicators.
-
-    Args:
-        df: DataFrame with OHLCV and indicators
-        threshold: Minimum % change to count as up/down (default 2%)
-        use_3class: If True, use 3 classes (down=0, hold=1, up=2)
+    Build feature frame for all rows (no label generation).
 
     Returns:
         X: Feature DataFrame
-        y: Labels array
-        valid_indices: Indices of valid samples (for walk-forward)
+        indices: Original df indices corresponding to rows in X
     """
-    if df.empty or len(df) < 60:
-        return None, None, None
+    if df.empty or len(df) < min_history:
+        return None, None
 
     features = []
-    labels = []
-    valid_indices = []
+    indices = []
 
-    for i in range(60, len(df) - 5):  # Start at 60 for MA60
+    for i in range(min_history, len(df)):
         row = df.iloc[i]
 
         # Skip if missing critical data
@@ -66,7 +60,6 @@ def prepare_features(df, threshold=2.0, use_3class=False):
 
         close = row['close']
 
-        # Technical indicator features
         feat = {
             # Price vs MAs (short to long term)
             'price_vs_ma5': _safe_ratio(close, row.get('ma5'), close) - 1,
@@ -140,42 +133,82 @@ def prepare_features(df, threshold=2.0, use_3class=False):
         }
 
         features.append(feat)
-        valid_indices.append(i)
+        indices.append(i)
 
-        # Calculate future return for label
-        future_close = df.iloc[i + 5]['close']
-        future_ret = (future_close - close) / close * 100
-
-        # Threshold-based labeling
-        if use_3class:
-            if future_ret > threshold:
-                labels.append(2)  # Up
-            elif future_ret < -threshold:
-                labels.append(0)  # Down
-            else:
-                labels.append(1)  # Hold
-        else:
-            # Binary with threshold - skip uncertain samples
-            if abs(future_ret) < threshold:
-                # Remove last feature since we're skipping this sample
-                features.pop()
-                valid_indices.pop()
-                continue
-            labels.append(1 if future_ret > threshold else 0)
-
-    if not features or len(features) < 30:
-        return None, None, None
+    if not features:
+        return None, None
 
     X = pd.DataFrame(features).fillna(0)
-    y = np.array(labels)
+    return X, indices
 
-    return X, y, valid_indices
+
+def prepare_features(df, threshold=2.0, use_3class=False, horizon=5):
+    """
+    Prepare feature matrix from stock data with indicators.
+
+    Args:
+        df: DataFrame with OHLCV and indicators
+        threshold: Minimum % change to count as up/down (default 2%)
+        use_3class: If True, use 3 classes (down=0, hold=1, up=2)
+
+    Returns:
+        X: Feature DataFrame
+        y: Labels array
+        valid_indices: Indices of valid samples (for walk-forward)
+    """
+    X, indices = build_feature_frame(df, min_history=60)
+    if X is None:
+        return None, None, None
+
+    labels = []
+    valid_indices = []
+    rows = []
+
+    for row_idx, i in enumerate(indices):
+        # Need future data for labels
+        if i + horizon >= len(df):
+            continue
+
+        close = df.iloc[i]['close']
+        future_close = df.iloc[i + horizon]['close']
+        if close <= 0 or pd.isna(future_close):
+            continue
+
+        future_ret = (future_close - close) / close * 100
+
+        if use_3class:
+            if future_ret > threshold:
+                label = 2  # Up
+            elif future_ret < -threshold:
+                label = 0  # Down
+            else:
+                label = 1  # Hold
+        else:
+            if abs(future_ret) < threshold:
+                continue
+            label = 1 if future_ret > threshold else 0
+
+        labels.append(label)
+        valid_indices.append(i)
+        rows.append(X.iloc[row_idx])
+
+    if not rows or len(rows) < 30:
+        return None, None, None
+
+    X_final = pd.DataFrame(rows).reset_index(drop=True)
+    y = np.array(labels)
+    return X_final, y, valid_indices
 
 
 def _safe_val(val, default):
     """Safely get value, return default if None or NaN."""
-    if val is None or (isinstance(val, float) and np.isnan(val)):
+    if val is None:
         return default
+    try:
+        if np.isnan(val) or np.isinf(val):
+            return default
+    except Exception:
+        pass
     return val
 
 
@@ -299,8 +332,9 @@ def walk_forward_validate(model, X, y, n_splits=5):
         if len(X_train) < 30 or len(X_test) < 5:
             continue
 
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
+        fold_model = clone(model)
+        fold_model.fit(X_train, y_train)
+        y_pred = fold_model.predict(X_test)
         scores.append(accuracy_score(y_test, y_pred))
 
     return scores if scores else [0.5]
@@ -460,7 +494,7 @@ def predict(stock_code, df, threshold=2.0):
     scaler = _scalers[stock_code]
     feature_names = _feature_names.get(stock_code, None)
 
-    X, _, _ = prepare_features(df, threshold=threshold)
+    X, _ = build_feature_frame(df, min_history=60)
     if X is None or len(X) == 0:
         return None, "Cannot prepare features"
 
@@ -539,12 +573,17 @@ def train_general_model(stocks_data, threshold=2.0):
     """Train a general model using data from multiple stocks."""
     all_X = []
     all_y = []
+    all_scores = []
 
     for stock_code, df in stocks_data.items():
         X, y, _ = prepare_features(df, threshold=threshold)
         if X is not None and len(X) > 0:
             all_X.append(X)
             all_y.append(y)
+            # Per-stock walk-forward validation to avoid leakage
+            model = create_ensemble_model()
+            scores = walk_forward_validate(model, X, y, n_splits=5)
+            all_scores.extend(scores)
 
     if not all_X:
         return None, None, "No valid data"
@@ -559,8 +598,8 @@ def train_general_model(stocks_data, threshold=2.0):
     # Use ensemble model
     model = create_ensemble_model()
 
-    # Walk-forward validation
-    wf_scores = walk_forward_validate(model, X_scaled, y, n_splits=5)
+    # Walk-forward validation results aggregated per stock
+    wf_scores = all_scores if all_scores else [0.5]
 
     # Train on all data
     model.fit(X_scaled, y)

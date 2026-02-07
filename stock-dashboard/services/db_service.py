@@ -87,13 +87,9 @@ def save_daily_data(stock_code, df):
     """Save daily data with indicators to database."""
     with get_connection() as conn:
         cursor = conn.cursor()
+        rows = []
         for _, row in df.iterrows():
-            cursor.execute('''
-                INSERT OR REPLACE INTO stock_daily
-                (stock_code, trade_date, open, close, high, low, volume, amount, change_pct,
-                 ma5, ma10, ma20, ma60, macd_dif, macd_dea, macd_hist, rsi)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
+            rows.append((
                 stock_code,
                 str(row.get('trade_date', '')),
                 row.get('open'),
@@ -112,6 +108,12 @@ def save_daily_data(stock_code, df):
                 row.get('macd_hist'),
                 row.get('rsi')
             ))
+        cursor.executemany('''
+            INSERT OR REPLACE INTO stock_daily
+            (stock_code, trade_date, open, close, high, low, volume, amount, change_pct,
+             ma5, ma10, ma20, ma60, macd_dif, macd_dea, macd_hist, rsi)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', rows)
         conn.commit()
 
 def get_daily_data(stock_code, days=120):
