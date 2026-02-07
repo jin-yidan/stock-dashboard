@@ -1,6 +1,6 @@
 # Stock Dashboard
 
-A modern technical analysis tool for Chinese A-share stocks.
+A modern technical analysis and signal dashboard for Chinese A-share stocks.
 
 ## Dashboard （可以添加自选股)
 <img width="1512" height="982" alt="Screenshot 2026-02-04 at 12 21 38" src="https://github.com/user-attachments/assets/4ae99863-6614-49ad-80b6-f9a99c1698ef" />
@@ -25,9 +25,13 @@ A modern technical analysis tool for Chinese A-share stocks.
 
 This dashboard helps you analyze Chinese stocks with:
 
+- **Realtime Quote (when available)** - Tries realtime API first, falls back to latest daily close
+- **Data Freshness** - Clearly shows whether data is live, recent, or stale
 - **K-Line Charts** - Interactive candlestick charts with MA lines
 - **Technical Indicators** - MACD, RSI, KDJ, Bollinger Bands, and 20+ more
-- **Trading Signals** - Buy/sell signals with confidence scores
+- **Trading Signals** - Market-regime-aware signals with confidence scores
+- **Historical Accuracy** - Win rate, expected return, MFE/MAE, and calibration buckets
+- **ML Prediction (5-day horizon)** - ATR-scaled labeling with walk-forward validation
 - **AI Analysis** - Optional Claude-powered stock analysis
 - **Watchlist** - Save your favorite stocks locally
 
@@ -58,12 +62,16 @@ Open **http://localhost:8080** in your browser.
 
 | Feature | Description |
 |---------|-------------|
+| Realtime Quote | Live quote when available, with fallback to latest daily close |
+| Data Freshness | Indicates if data is live / recent / stale |
 | K-Line Chart | Daily candlestick chart with MA5/10/20 |
-| Signal Score | Overall buy/sell signal (0-100) |
-| Technical Indicators | MACD, RSI, KDJ, BOLL, etc. |
+| Signal Score | Overall buy/sell signal with confidence |
+| Historical Accuracy | Win rate, expected return, MFE/MAE, score buckets |
+| Technical Indicators | MACD, RSI, KDJ, BOLL, and more |
 | 52-Week Range | Current price position in yearly range |
 | Chip Distribution | 筹码分布 analysis |
 | Trading Strategies | Turtle trading, platform breakout, etc. |
+| ML Prediction | 5-day horizon, ATR-scaled labels, walk-forward validation |
 | AI Analysis | Claude-powered stock analysis |
 
 ## Requirements
@@ -74,8 +82,9 @@ Open **http://localhost:8080** in your browser.
 ## Data Sources
 
 Market data is fetched from:
-- Baidu Stock (百度股市通)
-- East Money (东方财富)
+- Baidu Stock (百度股市通) and East Money (东方财富) for daily K-line (前复权)
+- Sina / Tencent realtime quotes via `adata.stock.market.list_market_current`
+- Tencent K-line as a fallback
 
 **Note:** Works best with access to Chinese network.
 

@@ -142,7 +142,15 @@ def build_feature_frame(df, min_history=60):
     return X, indices
 
 
-def prepare_features(df, threshold=2.0, use_3class=False, horizon=5):
+def prepare_features(
+    df,
+    threshold=2.0,
+    use_3class=False,
+    horizon=5,
+    threshold_mode='atr',
+    atr_multiplier=1.0,
+    vol_multiplier=1.0,
+):
     """
     Prepare feature matrix from stock data with indicators.
 
@@ -175,18 +183,26 @@ def prepare_features(df, threshold=2.0, use_3class=False, horizon=5):
             continue
 
         future_ret = (future_close - close) / close * 100
+        dyn_threshold = _get_dynamic_threshold(
+            df,
+            i,
+            base_threshold=threshold,
+            mode=threshold_mode,
+            atr_multiplier=atr_multiplier,
+            vol_multiplier=vol_multiplier
+        )
 
         if use_3class:
-            if future_ret > threshold:
+            if future_ret > dyn_threshold:
                 label = 2  # Up
-            elif future_ret < -threshold:
+            elif future_ret < -dyn_threshold:
                 label = 0  # Down
             else:
                 label = 1  # Hold
         else:
-            if abs(future_ret) < threshold:
+            if abs(future_ret) < dyn_threshold:
                 continue
-            label = 1 if future_ret > threshold else 0
+            label = 1 if future_ret > dyn_threshold else 0
 
         labels.append(label)
         valid_indices.append(i)
@@ -281,6 +297,27 @@ def _get_volatility_regime(df, i, lookback=20):
         return 1
 
 
+def _get_dynamic_threshold(df, i, base_threshold, mode='atr', atr_multiplier=1.0, vol_multiplier=1.0, vol_lookback=20):
+    """Compute a dynamic threshold based on ATR or volatility."""
+    try:
+        if mode == 'atr':
+            close = _safe_val(df.iloc[i].get('close'), 0)
+            atr = _safe_val(df.iloc[i].get('atr'), 0)
+            if close > 0 and atr > 0:
+                atr_pct = atr / close * 100
+                return max(base_threshold, atr_pct * atr_multiplier)
+        elif mode == 'vol':
+            start = max(0, i - vol_lookback + 1)
+            window = df.iloc[start:i+1]['change_pct'].dropna()
+            if len(window) >= 5:
+                vol = window.std()
+                if not np.isnan(vol):
+                    return max(base_threshold, vol * vol_multiplier)
+    except Exception:
+        pass
+    return base_threshold
+
+
 def _is_higher_high(df, i, periods=5):
     """Check if current high is higher than recent highs."""
     if i < periods:
@@ -317,13 +354,19 @@ def _get_day_of_week(row):
     return 2  # Default to Wednesday
 
 
-def walk_forward_validate(model, X, y, n_splits=5):
+def walk_forward_validate(model, X, y, n_splits=5, scale=True):
     """
     Perform walk-forward validation (time-series cross-validation).
     Always trains on past data and tests on future data.
     """
     tscv = TimeSeriesSplit(n_splits=n_splits)
-    scores = []
+    metrics = {
+        'accuracy': [],
+        'precision_buy': [],
+        'recall_buy': [],
+        'precision_sell': [],
+        'recall_sell': []
+    }
 
     for train_idx, test_idx in tscv.split(X):
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -332,12 +375,34 @@ def walk_forward_validate(model, X, y, n_splits=5):
         if len(X_train) < 30 or len(X_test) < 5:
             continue
 
+        if scale:
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
+
         fold_model = clone(model)
         fold_model.fit(X_train, y_train)
         y_pred = fold_model.predict(X_test)
-        scores.append(accuracy_score(y_test, y_pred))
 
-    return scores if scores else [0.5]
+        metrics['accuracy'].append(accuracy_score(y_test, y_pred))
+
+        # Binary metrics only when 2 classes present
+        unique_labels = np.unique(y_test)
+        if len(unique_labels) == 2:
+            metrics['precision_buy'].append(precision_score(y_test, y_pred, pos_label=1, zero_division=0))
+            metrics['recall_buy'].append(recall_score(y_test, y_pred, pos_label=1, zero_division=0))
+            metrics['precision_sell'].append(precision_score(y_test, y_pred, pos_label=0, zero_division=0))
+            metrics['recall_sell'].append(recall_score(y_test, y_pred, pos_label=0, zero_division=0))
+
+    if not metrics['accuracy']:
+        return {
+            'accuracy': [0.5],
+            'precision_buy': [],
+            'recall_buy': [],
+            'precision_sell': [],
+            'recall_sell': []
+        }
+    return metrics
 
 
 def create_ensemble_model():
@@ -382,7 +447,13 @@ def create_ensemble_model():
     return VotingClassifier(estimators=estimators, voting='soft')
 
 
-def train_model(stock_code, df, threshold=2.0, use_ensemble=True):
+def train_model(
+    stock_code,
+    df,
+    threshold=2.0,
+    use_ensemble=True,
+    threshold_mode='atr'
+):
     """
     Train a model for a specific stock with improved methodology.
 
@@ -392,7 +463,7 @@ def train_model(stock_code, df, threshold=2.0, use_ensemble=True):
         threshold: Minimum % change threshold for labels
         use_ensemble: Whether to use ensemble of models
     """
-    X, y, indices = prepare_features(df, threshold=threshold)
+    X, y, indices = prepare_features(df, threshold=threshold, threshold_mode=threshold_mode)
 
     if X is None or len(X) < 50:
         return None, None, "Insufficient data for training (need at least 50 samples)"
@@ -402,10 +473,6 @@ def train_model(stock_code, df, threshold=2.0, use_ensemble=True):
     if positive_rate < 0.2 or positive_rate > 0.8:
         # Highly imbalanced, might need adjustment
         pass
-
-    # Standardize features
-    scaler = StandardScaler()
-    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
 
     # Create model
     if use_ensemble:
@@ -420,7 +487,11 @@ def train_model(stock_code, df, threshold=2.0, use_ensemble=True):
         )
 
     # Walk-forward validation (proper time-series CV)
-    wf_scores = walk_forward_validate(model, X_scaled, y, n_splits=5)
+    wf_metrics = walk_forward_validate(model, X, y, n_splits=5, scale=True)
+
+    # Standardize features for final training
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
 
     # Train final model on all data
     model.fit(X_scaled, y)
@@ -438,12 +509,17 @@ def train_model(stock_code, df, threshold=2.0, use_ensemble=True):
     top_features = sorted(importance.items(), key=lambda x: -x[1])[:5]
 
     return model, scaler, {
-        'cv_accuracy': round(np.mean(wf_scores) * 100, 1),
-        'cv_std': round(np.std(wf_scores) * 100, 1),
+        'cv_accuracy': round(np.mean(wf_metrics['accuracy']) * 100, 1),
+        'cv_std': round(np.std(wf_metrics['accuracy']) * 100, 1),
+        'precision_buy': round(np.mean(wf_metrics['precision_buy']) * 100, 1) if wf_metrics['precision_buy'] else None,
+        'recall_buy': round(np.mean(wf_metrics['recall_buy']) * 100, 1) if wf_metrics['recall_buy'] else None,
+        'precision_sell': round(np.mean(wf_metrics['precision_sell']) * 100, 1) if wf_metrics['precision_sell'] else None,
+        'recall_sell': round(np.mean(wf_metrics['recall_sell']) * 100, 1) if wf_metrics['recall_sell'] else None,
         'samples': len(X),
         'positive_rate': round(positive_rate * 100, 1),
         'top_features': top_features,
         'threshold': threshold,
+        'threshold_mode': threshold_mode,
         'validation_type': 'walk-forward',
         'ensemble': use_ensemble,
         'models_used': _get_model_names(model)
@@ -569,21 +645,28 @@ def load_model(stock_code):
         return False
 
 
-def train_general_model(stocks_data, threshold=2.0):
+def train_general_model(stocks_data, threshold=2.0, threshold_mode='atr'):
     """Train a general model using data from multiple stocks."""
     all_X = []
     all_y = []
-    all_scores = []
+    all_metrics = {
+        'accuracy': [],
+        'precision_buy': [],
+        'recall_buy': [],
+        'precision_sell': [],
+        'recall_sell': []
+    }
 
     for stock_code, df in stocks_data.items():
-        X, y, _ = prepare_features(df, threshold=threshold)
+        X, y, _ = prepare_features(df, threshold=threshold, threshold_mode=threshold_mode)
         if X is not None and len(X) > 0:
             all_X.append(X)
             all_y.append(y)
             # Per-stock walk-forward validation to avoid leakage
             model = create_ensemble_model()
-            scores = walk_forward_validate(model, X, y, n_splits=5)
-            all_scores.extend(scores)
+            metrics = walk_forward_validate(model, X, y, n_splits=5, scale=True)
+            for key in all_metrics:
+                all_metrics[key].extend(metrics.get(key, []))
 
     if not all_X:
         return None, None, "No valid data"
@@ -591,15 +674,15 @@ def train_general_model(stocks_data, threshold=2.0):
     X = pd.concat(all_X, ignore_index=True)
     y = np.concatenate(all_y)
 
-    # Standardize
-    scaler = StandardScaler()
-    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
-
     # Use ensemble model
     model = create_ensemble_model()
 
     # Walk-forward validation results aggregated per stock
-    wf_scores = all_scores if all_scores else [0.5]
+    wf_scores = all_metrics['accuracy'] if all_metrics['accuracy'] else [0.5]
+
+    # Standardize
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns)
 
     # Train on all data
     model.fit(X_scaled, y)
@@ -618,11 +701,16 @@ def train_general_model(stocks_data, threshold=2.0):
     return model, scaler, {
         'cv_accuracy': round(np.mean(wf_scores) * 100, 1),
         'cv_std': round(np.std(wf_scores) * 100, 1),
+        'precision_buy': round(np.mean(all_metrics['precision_buy']) * 100, 1) if all_metrics['precision_buy'] else None,
+        'recall_buy': round(np.mean(all_metrics['recall_buy']) * 100, 1) if all_metrics['recall_buy'] else None,
+        'precision_sell': round(np.mean(all_metrics['precision_sell']) * 100, 1) if all_metrics['precision_sell'] else None,
+        'recall_sell': round(np.mean(all_metrics['recall_sell']) * 100, 1) if all_metrics['recall_sell'] else None,
         'samples': len(X),
         'stocks_used': len(stocks_data),
         'positive_rate': round(y.mean() * 100, 1),
         'top_features': top_features,
         'threshold': threshold,
+        'threshold_mode': threshold_mode,
         'validation_type': 'walk-forward',
         'models_used': _get_model_names(model)
     }

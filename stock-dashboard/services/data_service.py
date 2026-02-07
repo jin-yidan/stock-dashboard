@@ -85,14 +85,16 @@ def _get_kline_from_tencent(stock_code, days=120):
         rows = []
         for k in klines:
             if len(k) >= 6:
+                close = float(k[2])
+                volume = float(k[5])
                 rows.append({
                     'trade_date': k[0],
                     'open': float(k[1]),
-                    'close': float(k[2]),
+                    'close': close,
                     'high': float(k[3]),
                     'low': float(k[4]),
-                    'volume': float(k[5]),
-                    'amount': 0,  # Tencent API doesn't provide amount
+                    'volume': volume,
+                    'amount': close * volume,  # Approximate turnover
                     'change_pct': 0  # Will be calculated later if needed
                 })
 
@@ -166,13 +168,15 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
         df, err = _call_with_timeout(
             adata.stock.market.baidu_market.get_market,
             API_TIMEOUT_SECONDS,
-            stock_code=stock_code
+            stock_code=stock_code,
+            adjust_type=1
         )
         if df is None or df.empty:
             df, err = _call_with_timeout(
                 adata.stock.market.east_market.get_market,
                 API_TIMEOUT_SECONDS,
-                stock_code=stock_code
+                stock_code=stock_code,
+                adjust_type=1
             )
 
         # Third fallback: Tencent API (more reliable for some stocks)
@@ -181,6 +185,11 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
 
         if df is None or df.empty:
             return _get_kline_from_db(stock_code, days)
+
+        # Normalize columns
+        for col in ['open', 'close', 'high', 'low', 'volume', 'amount', 'change_pct', 'trade_date']:
+            if col not in df.columns:
+                df[col] = None
 
         # Convert columns to proper types
         df['trade_date'] = pd.to_datetime(df['trade_date']).dt.strftime('%Y-%m-%d')
@@ -191,6 +200,16 @@ def get_stock_kline(stock_code, days=DEFAULT_KLINE_DAYS):
         df['volume'] = pd.to_numeric(df['volume'], errors='coerce')
         df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
         df['change_pct'] = pd.to_numeric(df['change_pct'], errors='coerce')
+
+        # Standardize change_pct if missing
+        if df['change_pct'].isna().all():
+            df['change_pct'] = df['close'].pct_change() * 100
+        df['change_pct'] = df['change_pct'].fillna(0)
+
+        # Standardize amount if missing
+        if df['amount'].isna().all() or (df['amount'].fillna(0) == 0).all():
+            df['amount'] = df['close'] * df['volume']
+        df['amount'] = df['amount'].fillna(0)
 
         # Sort by date and get recent days
         df = df.sort_values('trade_date').reset_index(drop=True)

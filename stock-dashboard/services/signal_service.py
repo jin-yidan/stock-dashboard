@@ -1191,17 +1191,58 @@ def backtest_signal(stock_code, lookback_days=60):
 
     buy_correct = len([r for r in buy_signals if r['correct'] == True])
     sell_correct = len([r for r in sell_signals if r['correct'] == True])
+    pos_days = len([r for r in results if r['return_5d'] > 0])
+    neg_days = len([r for r in results if r['return_5d'] < 0])
+
+    # Expected return if following signals (buy = long, sell = short)
+    buy_total_ret = sum(r['return_5d'] for r in buy_signals) if buy_signals else 0
+    sell_total_ret = sum(-r['return_5d'] for r in sell_signals) if sell_signals else 0
+    total_signals = len(buy_signals) + len(sell_signals)
+    expected_return = (buy_total_ret + sell_total_ret) / total_signals if total_signals > 0 else 0
+
+    # MFE/MAE
+    buy_avg_mfe = round(sum(r['max_return'] for r in buy_signals) / len(buy_signals), 2) if buy_signals else 0
+    buy_avg_mae = round(sum(r['min_return'] for r in buy_signals) / len(buy_signals), 2) if buy_signals else 0
+    sell_avg_mfe = round(sum(-r['min_return'] for r in sell_signals) / len(sell_signals), 2) if sell_signals else 0
+    sell_avg_mae = round(sum(r['max_return'] for r in sell_signals) / len(sell_signals), 2) if sell_signals else 0
+
+    # Score calibration buckets
+    bins = [(0.15, 0.3), (0.3, 0.5), (0.5, 0.8), (0.8, 2.0)]
+    buckets = []
+    for low, high in bins:
+        bucket = [r for r in results if r['signal'] != 'hold' and abs(r['score']) >= low and abs(r['score']) < high]
+        if not bucket:
+            continue
+        correct = len([r for r in bucket if r['correct'] == True])
+        # Direction-adjusted returns
+        adj_returns = [r['return_5d'] if r['signal'] == 'buy' else -r['return_5d'] for r in bucket]
+        buckets.append({
+            'range': f'{low:.2f}-{high:.2f}',
+            'count': len(bucket),
+            'accuracy': round(correct / len(bucket) * 100, 1),
+            'avg_return': round(sum(adj_returns) / len(adj_returns), 2)
+        })
 
     result = {
         'stock_code': stock_code,
         'period': f'{lookback_days}天',
-        'total_signals': len(buy_signals) + len(sell_signals),
+        'total_signals': total_signals,
         'buy_signals': len(buy_signals),
         'buy_accuracy': round(buy_correct / len(buy_signals) * 100, 1) if buy_signals else 0,
         'buy_avg_return': round(sum(r['return_5d'] for r in buy_signals) / len(buy_signals), 2) if buy_signals else 0,
         'sell_signals': len(sell_signals),
         'sell_accuracy': round(sell_correct / len(sell_signals) * 100, 1) if sell_signals else 0,
         'sell_avg_return': round(sum(r['return_5d'] for r in sell_signals) / len(sell_signals), 2) if sell_signals else 0,
+        'buy_precision': round(buy_correct / len(buy_signals) * 100, 1) if buy_signals else 0,
+        'buy_recall': round(buy_correct / pos_days * 100, 1) if pos_days > 0 else 0,
+        'sell_precision': round(sell_correct / len(sell_signals) * 100, 1) if sell_signals else 0,
+        'sell_recall': round(sell_correct / neg_days * 100, 1) if neg_days > 0 else 0,
+        'expected_return': round(expected_return, 2),
+        'buy_avg_mfe': buy_avg_mfe,
+        'buy_avg_mae': buy_avg_mae,
+        'sell_avg_mfe': sell_avg_mfe,
+        'sell_avg_mae': sell_avg_mae,
+        'score_buckets': buckets,
         'recent_signals': results[-10:] if results else []
     }
 

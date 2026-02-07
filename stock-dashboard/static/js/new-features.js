@@ -23,9 +23,32 @@ function loadMarketStatus() {
         .catch(err => console.log('Market status error:', err));
 }
 
-// Load Data Freshness - disabled
+// Load Data Freshness
 function loadDataFreshness() {
-    // Removed - no longer showing data freshness badge
+    const stockCode = window.stockCode;
+    if (!stockCode) return;
+
+    fetch('/api/stock/' + stockCode + '/data-freshness')
+        .then(r => r.json())
+        .then(data => {
+            const el = document.getElementById('data-freshness');
+            if (!el) return;
+
+            if (data.error) {
+                el.style.display = 'none';
+                return;
+            }
+
+            const statusClass = data.fresh ? 'fresh' : 'stale';
+            el.className = 'freshness-badge ' + statusClass;
+            const label = data.status_cn || data.status || '数据';
+            const age = data.age ? ` · ${data.age}` : '';
+            el.textContent = label + age;
+            const lastData = data.last_data_date ? `数据日期: ${data.last_data_date}` : '';
+            const lastTrade = data.last_trading_date ? `最近交易日: ${data.last_trading_date}` : '';
+            el.title = [lastData, lastTrade].filter(Boolean).join('，');
+        })
+        .catch(err => console.log('Data freshness error:', err));
 }
 
 // Load Candlestick Patterns
@@ -84,6 +107,9 @@ function loadHistoricalAccuracy() {
             const valueEl = document.getElementById('accuracy-value');
             const signalsEl = document.getElementById('accuracy-signals');
             const periodEl = document.getElementById('accuracy-period');
+            const buyEl = document.getElementById('accuracy-buy');
+            const sellEl = document.getElementById('accuracy-sell');
+            const expectedEl = document.getElementById('accuracy-expected');
 
             if (!section || !valueEl) return;
 
@@ -124,6 +150,20 @@ function loadHistoricalAccuracy() {
                 // Make period more descriptive
                 const periodText = data.period.replace(/(\d+)天/, '$1 天');
                 periodEl.textContent = periodText;
+            }
+            if (buyEl) {
+                const buyAcc = data.buy_accuracy || 0;
+                buyEl.textContent = buyAcc.toFixed(1) + '%';
+            }
+            if (sellEl) {
+                const sellAcc = data.sell_accuracy || 0;
+                sellEl.textContent = sellAcc.toFixed(1) + '%';
+            }
+            if (expectedEl) {
+                const exp = data.expected_return || 0;
+                const prefix = exp >= 0 ? '+' : '';
+                expectedEl.textContent = `${prefix}${exp.toFixed(2)}%`;
+                expectedEl.className = 'accuracy-detail-value ' + (exp >= 0 ? 'up' : 'down');
             }
 
             section.style.display = 'block';

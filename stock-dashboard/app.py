@@ -199,7 +199,12 @@ def api_ml_train(code):
         return jsonify({'error': 'No data'})
 
     df = indicator_service.calculate_all(df)
-    model, scaler, stats = ml_service.train_model(code, df, threshold=1.0)  # Lower threshold
+    model, scaler, stats = ml_service.train_model(
+        code,
+        df,
+        threshold=1.0,  # Lower base threshold
+        threshold_mode='atr'
+    )
 
     if model is None:
         return jsonify({'error': stats})
@@ -209,6 +214,10 @@ def api_ml_train(code):
         'stock_code': code,
         'accuracy': stats['cv_accuracy'],
         'accuracy_std': stats['cv_std'],
+        'precision_buy': stats.get('precision_buy'),
+        'recall_buy': stats.get('recall_buy'),
+        'precision_sell': stats.get('precision_sell'),
+        'recall_sell': stats.get('recall_sell'),
         'samples': stats['samples'],
         'positive_rate': stats['positive_rate'],
         'top_features': [{'name': f[0], 'importance': round(f[1], 3)} for f in stats['top_features']]
@@ -251,7 +260,7 @@ def api_ml_train_general():
     if not stocks_data:
         return jsonify({'error': 'No data'})
 
-    model, scaler, stats = ml_service.train_general_model(stocks_data)
+    model, scaler, stats = ml_service.train_general_model(stocks_data, threshold_mode='atr')
 
     if model is None:
         return jsonify({'error': stats})
@@ -260,6 +269,10 @@ def api_ml_train_general():
         'status': 'success',
         'accuracy': stats['cv_accuracy'],
         'accuracy_std': stats['cv_std'],
+        'precision_buy': stats.get('precision_buy'),
+        'recall_buy': stats.get('recall_buy'),
+        'precision_sell': stats.get('precision_sell'),
+        'recall_sell': stats.get('recall_sell'),
         'samples': stats['samples'],
         'stocks_used': stats['stocks_used'],
         'positive_rate': stats['positive_rate'],
@@ -1001,6 +1014,16 @@ def api_historical_accuracy(code):
         'sell_signals': sell_signals,
         'buy_accuracy': result.get('buy_accuracy', 0),
         'sell_accuracy': result.get('sell_accuracy', 0),
+        'buy_precision': result.get('buy_precision', 0),
+        'sell_precision': result.get('sell_precision', 0),
+        'buy_recall': result.get('buy_recall', 0),
+        'sell_recall': result.get('sell_recall', 0),
+        'expected_return': result.get('expected_return', 0),
+        'buy_avg_mfe': result.get('buy_avg_mfe', 0),
+        'buy_avg_mae': result.get('buy_avg_mae', 0),
+        'sell_avg_mfe': result.get('sell_avg_mfe', 0),
+        'sell_avg_mae': result.get('sell_avg_mae', 0),
+        'score_buckets': result.get('score_buckets', []),
         'period': result.get('period', ''),
         'reliability': 'high' if accuracy > 55 else ('moderate' if accuracy > 45 else 'low')
     })
